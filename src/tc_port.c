@@ -1,15 +1,6 @@
-#include "vmlinux.h"
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
-#include <bpf/bpf_endian.h>
+#include "common.h"
+
 char __license[] SEC("license") = "GPL";
-
-#define ETH_P_IP 0x0800
-#define IPPROTO_TCP 6
-#define IPPROTO_UDP 17
-
-#define EGRESS   1
-#define INGRESS  0
 
 #define NF_INET_LOCAL_IN     1
 #define NF_INET_LOCAL_OUT    3
@@ -17,13 +8,8 @@ char __license[] SEC("license") = "GPL";
 #define NF_ACCEPT 1
 #define NF_DROP   0
 
-#define ACCEPT NF_ACCEPT
-#define DROP   NF_DROP
-
 #define ENABLE 1
 #define DISABLE 0
-
-#define NSEC_PER_SEC 1000000000ull
 
 struct traffic_rule {
     __u32    target_ip;    
@@ -35,11 +21,6 @@ struct traffic_rule {
     __u8     ip_enable : 1;
     __u8     port_enable : 1;
     __u8     protocol_enable : 5;   
-};
-
-struct rate_bucket {
-    __u64    ts_ns;         // Last update timestamp in nanoseconds
-    __u64    tokens;        // Current token count
 };
 
 struct packet_tuple {
@@ -210,45 +191,6 @@ static __inline bool parse_sk_buff(struct sk_buff *skb, __u8 direction,
     return true;
 }
 
-
-static __inline int rate_limit_check(__u64 bucket_key, __u32 rate_bps, __u32 time_scale,__u32 packet_len)
-{
-    __u64 now = now_ns();
-    __u64 delta_ns;
-    struct rate_bucket *b;
-    
-    __u64 max_bucket = (rate_bps * time_scale) >> 2;
-
-    b = bpf_map_lookup_elem(&buckets, &bucket_key);
-    if (!b) {
-        struct rate_bucket init = { 
-            .ts_ns = now, 
-            .tokens = max_bucket
-        };
-        bpf_map_update_elem(&buckets, &bucket_key, &init, BPF_ANY);
-        b = bpf_map_lookup_elem(&buckets, &bucket_key);
-        if (!b) {
-            return ACCEPT;
-        }
-    }
-
-    delta_ns = now - b->ts_ns;
-    b->tokens += (delta_ns * rate_bps) / NSEC_PER_SEC;
-    if (b->tokens > max_bucket) {
-        b->tokens = max_bucket;
-    }
-
-    b->ts_ns = now;
-
-    if (b->tokens < packet_len) {
-        return DROP;
-    }
-
-    b->tokens -= packet_len;
-
-    return ACCEPT;
-}
-
 static int netfilter_handle(struct bpf_nf_ctx *ctx)
 {
     struct traffic_rule *rule;
@@ -259,7 +201,6 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT;
     }
 
-    __u32 packet_len = ctx->skb->len;
     __u8 direction = INGRESS;
 
     if (!parse_sk_buff(ctx->skb, direction, &tuple)) {
@@ -289,8 +230,17 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     } else {
         bucket_key = ((__u64)tuple.dst_ip << 16) | tuple.dst_port | tuple.protocol;
     }
-
-    return rate_limit_check(bucket_key, rule->rate_bps, rule->time_scale, packet_len);
+    struct rate_limit rate = {
+        .bucket_key = &bucket_key,
+        .buckets = &buckets,
+        .packet_len = ctx->skb->len,
+        .rate_bps = rule->rate_bps,
+        .time_scale = rule->time_scale
+    };
+    if (rate_limit_check(&rate) == ACCEPT) {
+        return NF_ACCEPT; 
+    } 
+    return NF_DROP;
 }
 
 SEC("netfilter")

@@ -1,15 +1,24 @@
 #define __TARGET_ARCH_x86
-#include "vmlinux.h"
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
-#include <bpf/bpf_endian.h>
+#include "common.h"
 #include <bpf/bpf_core_read.h>
-
 
 char __license[] SEC("license") = "GPL";
 
 #define EGRESS   1
 #define INGRESS  0
+
+#define NF_INET_PRE_ROUTING  0
+#define NF_INET_LOCAL_IN     1
+#define NF_INET_FORWARD      2
+#define NF_INET_LOCAL_OUT    3
+#define NF_INET_POST_ROUTING 4
+
+#define NF_DROP    0   /* 丢弃数据包：包被丢弃，不再进行后续协议栈或其他 hook 处理 */
+#define NF_ACCEPT  1   /* 接收数据包：允许继续正常传递，或进入下一个 hook/协议栈 */
+#define NF_STOLEN  2   /* 包已被 hook “接管”：hook 函数已自行处理该包，不再做其他处理 */
+#define NF_QUEUE   3   /* 将包排队交给 userspace：通过 netlink 送到 userspace（nfnetlink_queue） */
+#define NF_REPEAT  4   /* 重复调用本 hook：在同一样点重新遍历所有注册的 hook 函数 */
+#define NF_STOP    5   /* 停止后续 hook 调用（已弃用，仅为 userspace nf_queue 兼容） */
 
 struct ProcInfo
 {
@@ -28,11 +37,6 @@ struct process_rule {
     __u64    rate_bps;     
     __u8     gress;        
     __u32    time_scale;  
-};
-
-struct rate_bucket {
-    __u64    ts_ns;        
-    __u64    tokens;     
 };
 
 struct {
@@ -65,24 +69,6 @@ struct {
     __uint(max_entries, 20000);
 } tuple_map SEC(".maps");
 
-#define ETH_P_IP 0x0800
-#define IPPROTO_TCP 6
-#define IPPROTO_UDP 17
-
-#define NSEC_PER_SEC 1000000000ull
-
-#define NF_INET_PRE_ROUTING  0
-#define NF_INET_LOCAL_IN     1
-#define NF_INET_FORWARD      2
-#define NF_INET_LOCAL_OUT    3
-#define NF_INET_POST_ROUTING 4
-
-#define NF_DROP    0   /* 丢弃数据包：包被丢弃，不再进行后续协议栈或其他 hook 处理 */
-#define NF_ACCEPT  1   /* 接收数据包：允许继续正常传递，或进入下一个 hook/协议栈 */
-#define NF_STOLEN  2   /* 包已被 hook “接管”：hook 函数已自行处理该包，不再做其他处理 */
-#define NF_QUEUE   3   /* 将包排队交给 userspace：通过 netlink 送到 userspace（nfnetlink_queue） */
-#define NF_REPEAT  4   /* 重复调用本 hook：在同一样点重新遍历所有注册的 hook 函数 */
-#define NF_STOP    5   /* 停止后续 hook 调用（已弃用，仅为 userspace nf_queue 兼容） */
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -91,33 +77,19 @@ struct {
     __uint(max_entries, 1);
 } local_ip_map SEC(".maps");
 
-
-static __inline __u64 now_ns(void)
-{
-    return bpf_ktime_get_ns();
-}
-
 static struct udphdr *udp_hdr(struct sk_buff *skb, u32 offset)
 {
     struct bpf_dynptr ptr;
     struct udphdr *p, udph = {};
-    if (skb->len <= offset)
-    {
+    if (skb->len <= offset) {
         return NULL;
     }
 
-    if (bpf_dynptr_from_skb((struct __sk_buff *)skb, 0, &ptr))
-    {
+    if (bpf_dynptr_from_skb((struct __sk_buff *)skb, 0, &ptr)) {
         return NULL;
     }
 
-    p = bpf_dynptr_slice(&ptr, offset, &udph, sizeof(udph));
-    if (!p)
-    {
-        return NULL;
-    }
-
-    return p;
+    return bpf_dynptr_slice(&ptr, offset, &udph, sizeof(udph));
 }
 
 static struct tcphdr *tcp_hdr(struct sk_buff *skb, u32 offset)
@@ -132,8 +104,7 @@ static struct tcphdr *tcp_hdr(struct sk_buff *skb, u32 offset)
         return NULL;
     }
 
-    p = bpf_dynptr_slice(&ptr, offset, &tcph, sizeof(tcph));
-    return p;
+    return bpf_dynptr_slice(&ptr, offset, &tcph, sizeof(tcph));
 }
 
 static struct iphdr *ip_hdr(struct sk_buff *skb)
@@ -149,13 +120,12 @@ static struct iphdr *ip_hdr(struct sk_buff *skb)
         return NULL;
     }
 
-	p = bpf_dynptr_slice(&ptr, 0, &iph, sizeof(iph));
-	return p;
+	return bpf_dynptr_slice(&ptr, 0, &iph, sizeof(iph));
 }
 
 static __attribute__((noinline)) bool parse_sk_buff(struct sk_buff *skb, __u8 direction,
                          struct net_group *tuple)
-                         {
+{
     struct iphdr *iph;
     struct udphdr *udph;
     struct tcphdr *tcph;
@@ -170,7 +140,6 @@ static __attribute__((noinline)) bool parse_sk_buff(struct sk_buff *skb, __u8 di
         return false;
     }
 
-    // Only handle IPv4
     if (iph->version != 4) {
         return false;
     }
@@ -247,11 +216,9 @@ int BPF_KPROBE(security_socket_recvmsg,
     save_sock(sock);
 
     struct sock *sk = BPF_CORE_READ(sock, sk);
-    if (sk)
-    {
+    if (sk) {
         __u16 skproto = BPF_CORE_READ(sk, sk_protocol);
-        if (skproto != IPPROTO_UDP)
-        {
+        if (skproto != IPPROTO_UDP) {
             return 0;
         }
 
@@ -293,60 +260,6 @@ int BPF_KPROBE(security_socket_sendmsg,
     return 0;
 }
 
-static __inline int rate_limit_check(struct ProcInfo *proc, __u32 packet_len)
-{
-    __u64 now = now_ns();
-    __u64 delta_ns;
-    struct rate_bucket *b;
-    struct process_rule *rule;
-    __u32 rule_key = 0;
-
-    if (!proc) {
-        return NF_ACCEPT;
-    }
-
-    rule = bpf_map_lookup_elem(&process_rules, &rule_key);
-    if (!rule) {
-        goto send_event_ok;
-    }
-
-    if (rule->target_pid != proc->pid) {
-        goto send_event_ok;
-    }
-
-    __u32 bucket_key = proc->pid;
-    __u64 max_bucket = (rule->rate_bps * rule->time_scale) >> 2;
-
-    b = bpf_map_lookup_elem(&buckets, &bucket_key);
-    if (!b) {
-        struct rate_bucket init = { 
-            .ts_ns = now, 
-            .tokens = max_bucket
-        };
-        bpf_map_update_elem(&buckets, &bucket_key, &init, BPF_ANY);
-        b = bpf_map_lookup_elem(&buckets, &bucket_key);
-        if (!b) {
-            goto send_event_ok;
-        }
-    }
-
-    delta_ns = now - b->ts_ns;
-    b->tokens += (delta_ns * rule->rate_bps) / NSEC_PER_SEC;
-    if (b->tokens > max_bucket)
-        b->tokens = max_bucket;
-
-    b->ts_ns = now;
-
-    if (b->tokens < packet_len)
-    {
-        return NF_DROP;
-    }
-
-    b->tokens -= packet_len;
-
-send_event_ok:
-    return NF_ACCEPT;
-}
 
 SEC("netfilter")
 int netfilter_hook(struct bpf_nf_ctx *ctx)
@@ -402,5 +315,21 @@ int netfilter_hook(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT;
     }
 
-    return rate_limit_check(proc, ctx->skb->len);
+    if (rule->target_pid != proc->pid) {
+        return NF_ACCEPT;
+    }
+
+    __u64 bucket_key = proc->pid;
+    struct rate_limit rate = {
+        .bucket_key = &bucket_key,
+        .buckets = &buckets,
+        .packet_len = ctx->skb->len,
+        .rate_bps = rule->rate_bps,
+        .time_scale = rule->time_scale
+    };
+
+    if (rate_limit_check(&rate) == ACCEPT) {
+        return NF_ACCEPT;
+    }
+    return NF_DROP;
 }
