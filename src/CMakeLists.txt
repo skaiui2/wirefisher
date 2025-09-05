@@ -8,9 +8,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 查找 yaml-cpp 库
 find_package(yaml-cpp REQUIRED)
 
-# 添加可执行文件（建议使用项目名作为目标名）
+# 查找 libbpf、libelf、zlib（系统库）
+find_library(LIBBPF_LIB bpf REQUIRED)
+find_library(ELF_LIB elf REQUIRED)
+find_library(ZLIB_LIB z REQUIRED)
+
+# 查找 libbpf 头文件路径（可选，如果你手动安装了 libbpf）
+find_path(LIBBPF_INCLUDE_DIR bpf/libbpf.h)
+
+# 添加可执行文件
 add_executable(YamlDemo tc_pro_get.cpp)
 
-# 链接 yaml-cpp 库
-target_link_libraries(YamlDemo PRIVATE yaml-cpp)
+# 添加头文件路径（如果找到了 libbpf 头文件）
+if (LIBBPF_INCLUDE_DIR)
+    target_include_directories(YamlDemo PRIVATE ${LIBBPF_INCLUDE_DIR})
+endif()
+
+# 链接所有依赖库
+target_link_libraries(YamlDemo PRIVATE yaml-cpp ${LIBBPF_LIB} ${ELF_LIB} ${ZLIB_LIB})
 

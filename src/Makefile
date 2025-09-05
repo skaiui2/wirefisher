@@ -11,20 +11,25 @@ INCLUDES    := \
 	-I/usr/include/$(shell dpkg-architecture -q DEB_HOST_MULTIARCH)
 
 SRCS        := $(wildcard tc_*.c)
-OBJS        := $(SRCS:.c=.o)
+BUILD_DIR   := build
+OBJS        := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 
 .PHONY: all clean
 
-all: $(OBJS)
+all: $(BUILD_DIR) vmlinux.h $(OBJS)
+
+# 创建 build 目录
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 # 自动生成 vmlinux.h
 vmlinux.h:
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 
-# 编译规则，依赖 vmlinux.h
-%.o: %.c vmlinux.h common.h
+# 编译规则：将 .o 文件输出到 build/
+$(BUILD_DIR)/%.o: %.c vmlinux.h common.h
 	$(CC) $(BPF_CFLAGS) $(PKG_CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) vmlinux.h
+	rm -rf $(BUILD_DIR) vmlinux.h
 

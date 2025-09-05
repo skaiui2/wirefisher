@@ -39,6 +39,17 @@ struct process_rule {
     __u32    time_scale;  
 };
 
+struct message_get {
+    struct ProcInfo proc;   
+};
+
+struct
+{
+	__uint(type, BPF_MAP_TYPE_RINGBUF);
+	__uint(max_entries, 1 << 16);
+} ringbuf SEC(".maps");
+
+
 struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct sock *);
@@ -123,6 +134,24 @@ static struct iphdr *ip_hdr(struct sk_buff *skb)
 	return bpf_dynptr_slice(&ptr, 0, &iph, sizeof(iph));
 }
 
+static __inline void send_message(struct ProcInfo *proc)
+{
+	struct message_get *e;
+
+	e = bpf_ringbuf_reserve(&ringbuf, sizeof(*e), 0);
+	if (!e) {
+		return;
+	}
+
+	if (proc) {
+		e->proc = *proc;
+	} else {
+		e->proc.pid = 0;
+		e->proc.comm[0] = '\0';
+	}
+
+	bpf_ringbuf_submit(e, 0);
+}
 static __attribute__((noinline)) bool parse_sk_buff(struct sk_buff *skb, __u8 direction,
                          struct net_group *tuple)
 {
@@ -314,6 +343,7 @@ int netfilter_hook(struct bpf_nf_ctx *ctx)
     if (pid == 0) {
         return NF_ACCEPT;
     }
+    send_message(proc);
 
     if (rule->target_pid != proc->pid) {
         return NF_ACCEPT;

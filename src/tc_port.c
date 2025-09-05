@@ -11,7 +11,7 @@ char __license[] SEC("license") = "GPL";
 #define ENABLE 1
 #define DISABLE 0
 
-struct traffic_rule {
+struct ip_pro_port_rule {
     __u32    target_ip;    
     __u16    target_port;  
     __u8     target_protocol; 
@@ -50,9 +50,9 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key,  __u32);              
-    __type(value, struct traffic_rule);
+    __type(value, struct ip_pro_port_rule);
     __uint(max_entries, 1024);
-} traffic_rules SEC(".maps");
+} ip_pro_port_rules SEC(".maps");
 
 // Token bucket mapping - using IP + protocol + port as key
 struct {
@@ -193,7 +193,7 @@ static __inline bool parse_sk_buff(struct sk_buff *skb, __u8 direction,
 
 static int netfilter_handle(struct bpf_nf_ctx *ctx)
 {
-    struct traffic_rule *rule;
+    struct ip_pro_port_rule *rule;
     __u32 rule_key = 0;
     struct packet_tuple tuple = {0};
 
@@ -207,7 +207,7 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT; 
     }
 
-    rule = bpf_map_lookup_elem(&traffic_rules, &rule_key);
+    rule = bpf_map_lookup_elem(&ip_pro_port_rules, &rule_key);
     if (!rule) {
         return NF_ACCEPT;
     }

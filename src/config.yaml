@@ -1,5 +1,5 @@
 process_rule:
   target_pid: 1234
   rate_bps: 1M
-  gress: engress
+  gress: ingress
   time_scale: 1s

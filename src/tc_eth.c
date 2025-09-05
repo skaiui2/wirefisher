@@ -15,7 +15,7 @@ struct flow_rate_info
     __u64 smooth_rate_bps;       
 };
 
-struct traffic_rule 
+struct eth_rule 
 {
     __u64 rate_bps;   
     __u8  gress;      
@@ -40,9 +40,9 @@ struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
-    __uint(value_size, sizeof(struct traffic_rule));
+    __uint(value_size, sizeof(struct eth_rule));
     __uint(max_entries, 1);
-} traffic_rules SEC(".maps");
+} eth_rules SEC(".maps");
 
 struct 
 {
@@ -95,7 +95,7 @@ static int tc_handle(struct __sk_buff *ctx, int gress)
 {
     __u64 bucket_key = gress; 
     __u32 rule_key = 0;
-    struct traffic_rule *rule = bpf_map_lookup_elem(&traffic_rules, &rule_key);
+    struct eth_rule *rule = bpf_map_lookup_elem(&eth_rules, &rule_key);
     if (!rule || (rule->gress != gress)) {
         return TC_ACT_OK;
     }
