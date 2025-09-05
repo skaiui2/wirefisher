@@ -25,7 +25,7 @@ include_directories(
 # 添加可执行文件，按目录组织源文件
 add_executable(ebpf_system
   src/main.cpp
-  modules/netfilter_module.cpp
+  modules/process_module.cpp
 )
 
 # 链接所需库

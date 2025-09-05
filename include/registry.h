@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
 
-// 每个模块只需提供：模块名 + load()/unload() 指针
 struct EbpfModule {
     const char* name;
+    const char* yaml_key;
     int  (*load)  ();
     void (*unload)();
 };
@@ -14,7 +14,16 @@ inline std::vector<const EbpfModule*>& get_registry() {
     return registry;
 }
 
-// 把模块加入全局注册链
 inline void register_module(const EbpfModule* m) {
     get_registry().push_back(m);
 }
+
+inline std::vector<struct ring_buffer*>& get_ringbufs() {
+    static std::vector<struct ring_buffer*> rbs;
+    return rbs;
+}
+
+inline void register_ringbuf(struct ring_buffer* rb) {
+    get_ringbufs().push_back(rb);
+}
+

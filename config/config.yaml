@@ -1,5 +1,6 @@
-process_rule:
-  target_pid: 1234
-  rate_bps: 1M
-  gress: ingress
-  time_scale: 1s
+process_module:
+  process_rule:
+    target_pid: 1234
+    rate_bps: 1M
+    gress: ingress
+    time_scale: 1s

@@ -1,4 +1,5 @@
 #include "registry.h"
+#include "parse.h"
 #include <iostream>
 #include <yaml-cpp/yaml.h>
 #include <cstdint>
@@ -18,7 +19,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <errno.h>
-
 
 struct process_rule {
     uint32_t target_pid;
@@ -45,49 +45,34 @@ static int                 nf_fd_egress     = -1;
 static struct ring_buffer *rb               = nullptr;
 static struct process_rule rule = {0};
 
-uint64_t parse_rate_bps(const std::string& rate_str) {
-    std::regex pattern(R"((\d+)([KMG]?))");
-    std::smatch match;
-    if (std::regex_match(rate_str, match, pattern)) {
-        uint64_t base = std::stoull(match[1].str());
-        std::string unit = match[2].str();
-        if (unit == "K") return base * 1024;
-        if (unit == "M") return base * 1024 * 1024;
-        if (unit == "G") return base * 1024 * 1024 * 1024;
-        return base;
-    }
-    throw std::runtime_error("Invalid rate_bps format");
-}
-
-uint32_t parse_time_scale(const std::string& time_str) {
-    std::regex pattern(R"((\d+)(s|ms|m))");
-    std::smatch match;
-    if (std::regex_match(time_str, match, pattern)) {
-        uint32_t base = std::stoul(match[1].str());
-        std::string unit = match[2].str();
-        if (unit == "ms") return base / 1000;
-        if (unit == "m")  return base * 60;
-        return base; // "s"
-    }
-    throw std::runtime_error("Invalid time_scale format");
-}
-
-uint8_t parse_gress(const std::string& gress_str) {
-    if (gress_str == "ingress") return 0;
-    if (gress_str == "engress") return 1;
-    throw std::runtime_error("Invalid gress value");
-}
-
-
 static int get_rule(process_rule *rule)
 {
     YAML::Node config = YAML::LoadFile("../config/config.yaml");
-    const auto& node = config["process_rule"];
 
-    rule->target_pid = node["target_pid"].as<uint32_t>();
-    rule->rate_bps   = parse_rate_bps(node["rate_bps"].as<std::string>());
-    rule->gress      = parse_gress(node["gress"].as<std::string>());
-    rule->time_scale = parse_time_scale(node["time_scale"].as<std::string>());
+    // 进入模块配置节
+    const auto& module_node = config["process_module"];
+    if (!module_node || module_node.IsNull()) {
+        std::cerr << "[get_rule] 缺少 process_module 配置节\n";
+        return -1;
+    }
+
+    // 进入规则结构体
+    const auto& node = module_node["process_rule"];
+    if (!node || node.IsNull()) {
+        std::cerr << "[get_rule] 缺少 process_rule 配置\n";
+        return -1;
+    }
+
+    // 解析字段
+    try {
+        rule->target_pid = node["target_pid"].as<uint32_t>();
+        rule->rate_bps   = parse_rate_bps(node["rate_bps"].as<std::string>());
+        rule->gress      = parse_gress(node["gress"].as<std::string>());
+        rule->time_scale = parse_time_scale(node["time_scale"].as<std::string>());
+    } catch (const std::exception& e) {
+        std::cerr << "[get_rule] 配置解析失败: " << e.what() << "\n";
+        return -1;
+    }
 
     std::cout << "PID: " << rule->target_pid << "\n";
     std::cout << "Rate: " << rule->rate_bps << " bps\n";
@@ -263,6 +248,7 @@ static int load_netfilter_module()
             std::cerr << "[netfilter] 创建 ring buffer 失败\n";
             goto error;
         }
+        register_ringbuf(rb);
     }
 
     std::cout << "[netfilter] 模块加载完成，开始处理事件\n";
@@ -298,7 +284,8 @@ static void unload_netfilter_module()
 
 // 构造模块描述并自动注册到全局链
 static const EbpfModule netfilter_module = {
-    "tc_process",               
+    "tc_process",   
+    "process_module",          // YAML 配置节关键字
     load_netfilter_module,     // 加载接口
     unload_netfilter_module    // 卸载接口
 };
@@ -307,19 +294,4 @@ __attribute__((constructor))
 static void register_netfilter_module()
 {
     register_module(&netfilter_module);
-}
-
-
-void out()
-{
-    int err = ring_buffer__poll(rb, 100);
-        if (err == -EINTR)
-        {
-            
-        }
-        if (err < 0)
-        {
-            std::cerr << "轮询环形缓冲区错误: " << err << std::endl;
-            
-        }
 }

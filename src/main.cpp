@@ -2,27 +2,8 @@
 #include <iostream>
 #include <signal.h>
 #include <unistd.h>
-
-#include <iostream>
-#include <yaml-cpp/yaml.h>
-#include <cstdint>
-#include <string>
-#include <regex>
-#include <signal.h>
-#include <unistd.h>
-#include <iostream>
-#include <cstring>
-#include <getopt.h>
-#include <net/if.h>
-#include <arpa/inet.h>
-#include <fcntl.h>
 #include <bpf/libbpf.h>
-#include <bpf/bpf.h>
-#include <linux/netfilter.h>
-#include <linux/bpf.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#include <errno.h>
+#include <yaml-cpp/yaml.h>
 
 static bool running = true;
 
@@ -31,24 +12,46 @@ static void on_signal(int) {
 }
 
 extern void out();
-int main() {
+int main()
+{
+    if (getuid() != 0) {
+        std::cerr << "error: no root!\n";
+        return 1;
+    }
+
+    YAML::Node config = YAML::LoadFile("../config/config.yaml");
+
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
 
-    for (auto m : get_registry()) {
-        std::cout << "加载模块：" << m->name << std::endl;
-        if (m->load() != 0) {
-            std::cerr << "  模块加载失败：" << m->name << std::endl;
+    // 4. 遍历注册链，按配置节判断是否加载模块
+    for (auto mod : get_registry()) {
+        const auto& node = config[mod->yaml_key];  // 每个模块声明自己的 yaml_key
+        if (!node || node.IsNull()) {
+            std::cout << "跳过模块：" << mod->name << "（未配置）\n";
+            continue;
+        }
+
+        std::cout << "加载模块：" << mod->name << "\n";
+        if (mod->load() != 0) {
+            std::cerr << "模块加载失败：" << mod->name << "\n";
         }
     }
 
     while (running) {
-        out();
+        for (auto rb : get_ringbufs()) {
+            int err = ring_buffer__poll(rb, 100);
+            if (err == -EINTR) {
+                continue;
+            } else if (err < 0) {
+                std::cerr << "ring_buffer__poll 错误: " << err << "\n";
+            }
+        }
     }
 
     auto& regs = get_registry();
     for (auto it = regs.rbegin(); it != regs.rend(); ++it) {
-        std::cout << "卸载模块：" << (*it)->name << std::endl;
+        std::cout << "卸载模块的注册：" << (*it)->name << std::endl;
         (*it)->unload();
     }
 
