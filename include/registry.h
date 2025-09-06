@@ -1,10 +1,10 @@
 #pragma once
 #include <vector>
-
+#include <yaml-cpp/yaml.h>
 struct EbpfModule {
     const char* name;
     const char* yaml_key;
-    int  (*load)  ();
+    int  (*load)  (const YAML::Node& module_node);
     void (*unload)();
 };
 

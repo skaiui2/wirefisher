@@ -26,6 +26,7 @@ include_directories(
 add_executable(ebpf_system
   src/main.cpp
   modules/process_module.cpp
+  modules/ip_pro_port_module.cpp
 )
 
 # 链接所需库

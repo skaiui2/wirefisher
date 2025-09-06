@@ -33,10 +33,17 @@ int main()
         }
 
         std::cout << "加载模块：" << mod->name << "\n";
-        if (mod->load() != 0) {
+        if (mod->load(node) != 0) {
             std::cerr << "模块加载失败：" << mod->name << "\n";
         }
     }
+
+    std::cerr << "[DEBUG] get_registry().size() = "
+              << get_registry().size() << "\n";
+
+    // 3. 调试打印：ringbuf 注册后的快照
+    std::cerr << "[DEBUG] get_ringbufs().size() = "
+              << get_ringbufs().size() << "\n";
 
     while (running) {
         for (auto rb : get_ringbufs()) {
