@@ -43,32 +43,30 @@ static struct bpf_link   *sendmsg_kprobe    = nullptr;
 static int                 nf_fd_ingress    = -1;
 static int                 nf_fd_egress     = -1;
 static struct ring_buffer *rb               = nullptr;
-static struct process_rule rule = {0};
 
-static int get_rule(process_rule *rule, const YAML::Node& module_node)
+static int get_rule(const YAML::Node& module_node)
 {
-    // 进入规则结构体
+    struct process_rule rule = {0};
     const auto& node = module_node["process_rule"];
     if (!node || node.IsNull()) {
         std::cerr << "[get_rule] 缺少 process_rule 配置\n";
         return -1;
     }
 
-    // 解析字段
     try {
-        rule->target_pid = node["target_pid"].as<uint32_t>();
-        rule->rate_bps   = parse_rate_bps(node["rate_bps"].as<std::string>());
-        rule->gress      = parse_gress(node["gress"].as<std::string>());
-        rule->time_scale = parse_time_scale(node["time_scale"].as<std::string>());
+        rule.target_pid = node["target_pid"].as<uint32_t>();
+        rule.rate_bps   = parse_rate_bps(node["rate_bps"].as<std::string>());
+        rule.gress      = parse_gress(node["gress"].as<std::string>());
+        rule.time_scale = parse_time_scale(node["time_scale"].as<std::string>());
     } catch (const std::exception& e) {
         std::cerr << "[get_rule] 配置解析失败: " << e.what() << "\n";
         return -1;
     }
 
-    std::cout << "PID: " << rule->target_pid << "\n";
-    std::cout << "Rate: " << rule->rate_bps << " bps\n";
+    std::cout << "PID: " << rule.target_pid << "\n";
+    std::cout << "Rate: " << rule.rate_bps << " bps\n";
     std::cout << "Gress: " << node["gress"].as<std::string>() << "\n";
-    std::cout << "Time Scale: " << rule->time_scale << " sec\n";
+    std::cout << "Time Scale: " << rule.time_scale << " sec\n";
 
     struct bpf_map *map = bpf_object__find_map_by_name(obj, "process_rules");
 	if (!map) {
@@ -77,8 +75,7 @@ static int get_rule(process_rule *rule, const YAML::Node& module_node)
 	}
 
 	uint32_t key = 0;
-
-	int err = bpf_map__update_elem(map,&key, sizeof(key), &rule, sizeof(*rule), BPF_ANY);
+	int err = bpf_map__update_elem(map,&key, sizeof(key), &rule, sizeof(rule), BPF_ANY);
 	if (err) {
         std::cout << "NO3" << "\n";
         return false;
@@ -192,7 +189,7 @@ static int load_netfilter_module(const YAML::Node& module_node)
         }
     }
 
-    if (get_rule(&rule, module_node) == false) {
+    if (get_rule(module_node) == false) {
         std::cerr << "[netfilter] 读取配置或更新规则失败\n";
         goto error;
     }

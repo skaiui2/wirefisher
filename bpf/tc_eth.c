@@ -5,8 +5,7 @@ char __license[] SEC("license") = "GPL";
 #define TC_ACT_OK 0
 #define TC_ACT_SHOT 2
 
-struct flow_rate_info 
-{
+struct flow_rate_info {
     __u64 window_start_ns;   
     __u64 total_packets;     
     __u64 total_bytes;    
@@ -15,42 +14,67 @@ struct flow_rate_info
     __u64 smooth_rate_bps;       
 };
 
-struct eth_rule 
-{
-    __u64 rate_bps;   
-    __u8  gress;      
-    __u32 time_scale;  
+
+struct eth_rule {
+    __u64    rate_bps;      
+    __u32    time_scale;    
+    __u8     gress;       
 };
 
-struct 
-{
+struct message_get {
+    __u64    timestamp;
+    __u64    current_rate_bps;
+    __u64    peak_rate_bps;
+    __u64    smoothed_rate_bps;
+};
+
+
+struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 256 * 1024);
 } ringbuf SEC(".maps");
 
-struct 
-{
+struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));     
     __uint(value_size, sizeof(struct flow_rate_info));
     __uint(max_entries, 1);      
 } flow_rate_stats SEC(".maps");
 
-struct 
-{
+struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
     __uint(value_size, sizeof(struct eth_rule));
     __uint(max_entries, 1);
 } eth_rules SEC(".maps");
 
-struct 
-{
+struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, sizeof(__u32));
+    __uint(key_size, sizeof(__u8));
     __uint(value_size, sizeof(struct rate_bucket));
-    __uint(max_entries, 1024);
+    __uint(max_entries, 2);
 } buckets SEC(".maps");
+
+
+static __inline __u64 now_ns(void) 
+{
+    return bpf_ktime_get_ns();
+}
+
+static __inline void send_message(struct message_get *mes)
+{
+	struct message_get *e;
+
+	e = bpf_ringbuf_reserve(&ringbuf, sizeof(*e), 0);
+	if (!e) {
+		return;
+	}
+    *e = *mes;
+	e->timestamp = now_ns();
+
+	bpf_ringbuf_submit(e, 0);
+}
+
 
 static __inline bool parse_ethernet_header(struct __sk_buff *ctx, void *data, void *data_end,
                                          __u8 *src_mac, __u8 *dst_mac, __u16 *eth_type) 
@@ -59,7 +83,7 @@ static __inline bool parse_ethernet_header(struct __sk_buff *ctx, void *data, vo
         return false;
     }
 
-    struct ethhdr *eth = data;
+    struct ethhdr *eth = (struct ethhdr *)data;
 
     #pragma unroll
     for (int i = 0; i < 6; i++) {
@@ -76,9 +100,9 @@ static __inline bool parse_ethernet_header(struct __sk_buff *ctx, void *data, vo
     return true;
 }
 
-static __inline void update_flow_rate(struct flow_rate_info *flow_info,__u64 now, __u32 packet_size) 
+static __inline void update_flow_rate(struct flow_rate_info *flow_info, __u64 now, __u32 packet_size) 
 {
-    
+     
     flow_info->rate_bps = (flow_info->total_bytes * NSEC_PER_SEC) / (now - flow_info->window_start_ns);
     if (flow_info->rate_bps > flow_info->peak_rate_bps) {
         flow_info->peak_rate_bps = flow_info->rate_bps;
@@ -93,6 +117,7 @@ static __inline void update_flow_rate(struct flow_rate_info *flow_info,__u64 now
 
 static int tc_handle(struct __sk_buff *ctx, int gress)
 {
+    struct message_get mes = {0};
     __u64 bucket_key = gress; 
     __u32 rule_key = 0;
     struct eth_rule *rule = bpf_map_lookup_elem(&eth_rules, &rule_key);
@@ -130,9 +155,17 @@ static int tc_handle(struct __sk_buff *ctx, int gress)
             .rate_bps = 0,
             .peak_rate_bps = 0
         };
-        bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY);
+        bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY); 
     }
-    update_flow_rate(info, now, ctx->len);
+    info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
+    if (info) {
+        update_flow_rate(info, now, ctx->len);
+        mes.current_rate_bps = info->rate_bps;
+        mes.peak_rate_bps = info->peak_rate_bps;
+        mes.smoothed_rate_bps = info->smooth_rate_bps;
+    }
+
+    send_message(&mes);
 
     struct rate_limit rate = {
         .bucket_key = &bucket_key,

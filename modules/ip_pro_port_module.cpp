@@ -54,11 +54,10 @@ static struct bpf_object *obj               = nullptr;
 static int                 nf_fd_ingress    = -1;
 static int                 nf_fd_egress     = -1;
 static struct ring_buffer *rb               = nullptr;
-static struct ip_pro_port_rule rule = {0};
 
-static int get_rule(ip_pro_port_rule *rule, const YAML::Node& module_node)
+static int get_rule(const YAML::Node& module_node)
 {
-    // 进入规则结构体
+    struct ip_pro_port_rule rule = {0};
     const auto& node = module_node["ip_pro_port_rule"];
     if (!node || node.IsNull()) {
         std::cerr << "[get_rule] 缺少 ip_pro_port_rule 配置\n";
@@ -66,15 +65,15 @@ static int get_rule(ip_pro_port_rule *rule, const YAML::Node& module_node)
     }
 
     try {
-        rule->target_ip       = parse_ip(node["target_ip"].as<std::string>());
-        rule->target_port     = node["target_port"].as<uint16_t>();
-        rule->target_protocol = parse_protocol(node["target_protocol"].as<std::string>());
-        rule->rate_bps        = parse_rate_bps(node["rate_bps"].as<std::string>());
-        rule->time_scale      = parse_time_scale(node["time_scale"].as<std::string>());
-        rule->gress           = parse_gress(node["gress"].as<std::string>());
-        rule->ip_enable        = parse_flag(node["ip_enable"]);
-        rule->port_enable      = parse_flag(node["port_enable"]);
-        rule->protocol_enable  = parse_flag(node["protocol_enable"]);
+        rule.target_ip       = parse_ip(node["target_ip"].as<std::string>());
+        rule.target_port     = node["target_port"].as<uint16_t>();
+        rule.target_protocol = parse_protocol(node["target_protocol"].as<std::string>());
+        rule.rate_bps        = parse_rate_bps(node["rate_bps"].as<std::string>());
+        rule.time_scale      = parse_time_scale(node["time_scale"].as<std::string>());
+        rule.gress           = parse_gress(node["gress"].as<std::string>());
+        rule.ip_enable        = parse_flag(node["ip_enable"]);
+        rule.port_enable      = parse_flag(node["port_enable"]);
+        rule.protocol_enable  = parse_flag(node["protocol_enable"]);
     }
     catch (const std::exception& e) {
         std::cerr << "[get_rule] 配置解析失败: " << e.what() << "\n";
@@ -83,15 +82,15 @@ static int get_rule(ip_pro_port_rule *rule, const YAML::Node& module_node)
 
     std::cout 
         << "=== ip_pro_port_rule ===\n"
-        << " target_ip         : " << ip_to_string(rule->target_ip)    << "\n"
-        << " target_port       : " << rule->target_port                << "\n"
-        << " target_protocol   : " << int(rule->target_protocol)       << "\n"
-        << " rate_bps          : " << rule->rate_bps << " bps\n"
-        << " time_scale        : " << rule->time_scale << " sec\n"
-        << " gress             : " << (rule->gress ? "egress" : "ingress") << "\n"
-        << " ip_enable         : " << std::boolalpha << bool(rule->ip_enable)       << "\n"
-        << " port_enable       : " << std::boolalpha << bool(rule->port_enable)     << "\n"
-        << " protocol_enable   : " << std::boolalpha << bool(rule->protocol_enable) << "\n"
+        << " target_ip         : " << ip_to_string(rule.target_ip)    << "\n"
+        << " target_port       : " << rule.target_port                << "\n"
+        << " target_protocol   : " << int(rule.target_protocol)       << "\n"
+        << " rate_bps          : " << rule.rate_bps << " bps\n"
+        << " time_scale        : " << rule.time_scale << " sec\n"
+        << " gress             : " << (rule.gress ? "egress" : "ingress") << "\n"
+        << " ip_enable         : " << std::boolalpha << bool(rule.ip_enable)       << "\n"
+        << " port_enable       : " << std::boolalpha << bool(rule.port_enable)     << "\n"
+        << " protocol_enable   : " << std::boolalpha << bool(rule.protocol_enable) << "\n"
         << "========================\n";
 
     struct bpf_map *map = bpf_object__find_map_by_name(obj, "ip_pro_port_rules");
@@ -101,8 +100,7 @@ static int get_rule(ip_pro_port_rule *rule, const YAML::Node& module_node)
 	}
 
 	uint32_t key = 0;
-
-	int err = bpf_map__update_elem(map,&key, sizeof(key), &rule, sizeof(*rule), BPF_ANY);
+	int err = bpf_map__update_elem(map,&key, sizeof(key), &rule, sizeof(rule), BPF_ANY);
 	if (err) {
         std::cout << "NO3" << "\n";
         return false;
@@ -123,7 +121,7 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
         << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
         << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
         << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
-        << " timestamp : " << format_elapsed_ns(e->timestamp)      << "\n"
+        << " timestamp : " << format_elapsed_ns(e->timestamp)        << "\n"
         << "=====================\n";
 
     return 0;
@@ -149,7 +147,7 @@ static int load_netfilter_module(const YAML::Node& module_node)
         return -1;
     }
 
-    if (get_rule(&rule, module_node) == false) {
+    if (get_rule(module_node) == false) {
         std::cerr << "[netfilter] 读取配置或更新规则失败\n";
         goto error;
     }

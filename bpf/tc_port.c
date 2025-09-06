@@ -211,8 +211,6 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT; 
     }
 
-    send_message(&mes);
-
     rule = bpf_map_lookup_elem(&ip_pro_port_rules, &rule_key);
     if (!rule) {
         return NF_ACCEPT;
@@ -229,6 +227,8 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     if (rule->protocol_enable == true && rule->target_protocol != tuple->protocol) {
         return NF_ACCEPT;
     }
+
+    send_message(&mes);
     
     __u64 bucket_key;
     if (rule->ip_enable == false && rule->port_enable == false && rule->protocol_enable == false) {
