@@ -5,16 +5,6 @@ char __license[] SEC("license") = "GPL";
 #define TC_ACT_OK 0
 #define TC_ACT_SHOT 2
 
-struct flow_rate_info {
-    __u64 window_start_ns;   
-    __u64 total_packets;     
-    __u64 total_bytes;    
-    __u64 rate_bps;       
-    __u64 peak_rate_bps;    
-    __u64 smooth_rate_bps;       
-};
-
-
 struct eth_rule {
     __u64    rate_bps;      
     __u32    time_scale;    
@@ -55,12 +45,6 @@ struct {
     __uint(max_entries, 2);
 } buckets SEC(".maps");
 
-
-static __inline __u64 now_ns(void) 
-{
-    return bpf_ktime_get_ns();
-}
-
 static __inline void send_message(struct message_get *mes)
 {
 	struct message_get *e;
@@ -98,21 +82,6 @@ static __inline bool parse_ethernet_header(struct __sk_buff *ctx, void *data, vo
     *eth_type = bpf_ntohs(eth->h_proto);
 
     return true;
-}
-
-static __inline void update_flow_rate(struct flow_rate_info *flow_info, __u64 now, __u32 packet_size) 
-{
-     
-    flow_info->rate_bps = (flow_info->total_bytes * NSEC_PER_SEC) / (now - flow_info->window_start_ns);
-    if (flow_info->rate_bps > flow_info->peak_rate_bps) {
-        flow_info->peak_rate_bps = flow_info->rate_bps;
-    }
-
-    if (flow_info->smooth_rate_bps != 0) {
-        flow_info->smooth_rate_bps = (flow_info->smooth_rate_bps - (flow_info->smooth_rate_bps >> 3)) + (flow_info->rate_bps  >> 3);
-    } else {
-        flow_info->smooth_rate_bps = flow_info->rate_bps;
-    }
 }
 
 static int tc_handle(struct __sk_buff *ctx, int gress)
@@ -153,7 +122,8 @@ static int tc_handle(struct __sk_buff *ctx, int gress)
             .total_packets = 1,
             .total_bytes = ctx->len,
             .rate_bps = 0,
-            .peak_rate_bps = 0
+            .peak_rate_bps = 0,
+            .smooth_rate_bps = 0
         };
         bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY); 
     }

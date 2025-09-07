@@ -34,7 +34,11 @@ struct ProcInfo
 };
 
 struct message_get {
-    struct ProcInfo proc;   
+    struct ProcInfo proc;
+    __u64 current_rate_bps;
+    __u64 peak_rate_bps;
+    __u64 smoothed_rate_bps;   
+	__u64 timestamp;
 };
 
 static struct bpf_object *obj               = nullptr;
@@ -140,12 +144,18 @@ static bool setup_local_ip_map()
 
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-    if (data_sz != sizeof(struct message_get)) {
+    if (data_sz != sizeof(message_get))
         return 0;
-    }
 
-    const struct message_get *e = static_cast<const struct message_get*>(data);
-    std::cout << "PID=" << e->proc.pid << " (" << e->proc.comm << ")" << std::endl;
+    auto* e = static_cast<const message_get*>(data);
+    std::cout
+        << "=== process_traffic ===\n" 
+        << " current_rate_bps : " << e->current_rate_bps << " bps\n"
+        << " peak_rate_bps    : " << e->peak_rate_bps    << " bps\n"
+        << " smoothed_rate_bps: " << e->smoothed_rate_bps << " bps\n"
+        << " timestamp : " << format_elapsed_ns(e->timestamp)        << "\n"
+        << "=====================\n";
+
     return 0;
 }
 
@@ -242,7 +252,6 @@ static int load_netfilter_module(const YAML::Node& module_node)
     return 0;
 
 error:
-    // 若加载流程中任一步失败，执行卸载清理
     if (recvmsg_kprobe)  bpf_link__destroy(recvmsg_kprobe);
     if (sendmsg_kprobe)  bpf_link__destroy(sendmsg_kprobe);
     if (nf_fd_ingress >= 0) close(nf_fd_ingress);
@@ -254,7 +263,6 @@ error:
     return -1;
 }
 
-// 卸载函数：反向清理所有资源
 static void unload_netfilter_module()
 {
     if (rb)                ring_buffer__free(rb);

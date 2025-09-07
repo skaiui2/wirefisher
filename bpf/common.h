@@ -30,6 +30,21 @@ struct rate_limit {
     void *buckets;
 };
 
+
+struct flow_rate_info {
+    __u64 window_start_ns;   
+    __u64 total_packets;     
+    __u64 total_bytes;    
+    __u64 rate_bps;       
+    __u64 peak_rate_bps;    
+    __u64 smooth_rate_bps;       
+};
+
+static __inline __u64 now_ns(void) 
+{
+    return bpf_ktime_get_ns();
+}
+
 static __always_inline int rate_limit_check(struct rate_limit *rate)
 {
     __u64 now = bpf_ktime_get_ns();
@@ -67,5 +82,21 @@ static __always_inline int rate_limit_check(struct rate_limit *rate)
 
     return ACCEPT;
 }
+
+
+static __inline void update_flow_rate(struct flow_rate_info *flow_info, __u64 now, __u32 packet_size) 
+{
+    flow_info->rate_bps = (flow_info->total_bytes * NSEC_PER_SEC) / (now - flow_info->window_start_ns);
+    if (flow_info->rate_bps > flow_info->peak_rate_bps) {
+        flow_info->peak_rate_bps = flow_info->rate_bps;
+    }
+
+    if (flow_info->smooth_rate_bps != 0) {
+        flow_info->smooth_rate_bps = (flow_info->smooth_rate_bps - (flow_info->smooth_rate_bps >> 3)) + (flow_info->rate_bps  >> 3);
+    } else {
+        flow_info->smooth_rate_bps = flow_info->rate_bps;
+    }
+}
+
 
 #endif

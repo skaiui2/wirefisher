@@ -115,12 +115,15 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
 
     auto* e = static_cast<const message_get*>(data);
     std::cout
-        << "=== Traffic Event ===\n"
+        << "=== ip_port_protocol_traffic ===\n"
         << " src_ip     : " << ip_to_string(e->tuple.src_ip)         << "\n"
         << " dst_ip     : " << ip_to_string(e->tuple.dst_ip)         << "\n"
         << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
         << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
         << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
+        << " current_rate_bps : " << e->current_rate_bps << " bps\n"
+        << " peak_rate_bps    : " << e->peak_rate_bps    << " bps\n"
+        << " smoothed_rate_bps: " << e->smoothed_rate_bps << " bps\n"
         << " timestamp : " << format_elapsed_ns(e->timestamp)        << "\n"
         << "=====================\n";
 

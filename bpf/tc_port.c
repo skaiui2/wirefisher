@@ -8,6 +8,7 @@ char __license[] SEC("license") = "GPL";
 #define NF_ACCEPT 1
 #define NF_DROP   0
 
+
 struct ip_pro_port_rule {
     __u32    target_ip;    
     __u16    target_port;  
@@ -43,6 +44,13 @@ struct {
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(__u32));     
+    __uint(value_size, sizeof(struct flow_rate_info));
+    __uint(max_entries, 1);      
+} flow_rate_stats SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
     __type(key,  __u32);              
     __type(value, struct ip_pro_port_rule);
     __uint(max_entries, 1024);
@@ -55,11 +63,6 @@ struct {
     __type(value, struct rate_bucket);
     __uint(max_entries, 1024);
 } buckets SEC(".maps");
-
-static __inline __u64 now_ns(void) 
-{
-    return bpf_ktime_get_ns();
-}
 
 static struct udphdr *udp_hdr(struct sk_buff *skb, u32 offset)
 {
@@ -226,6 +229,29 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
 
     if (rule->protocol_enable == true && rule->target_protocol != tuple->protocol) {
         return NF_ACCEPT;
+    }
+
+    
+    __u64 now = bpf_ktime_get_ns();
+    __u32 flow_key = 1;
+    struct flow_rate_info *info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
+    if (!info) {
+        struct flow_rate_info new_flow = {
+            .window_start_ns = now,
+            .total_packets = 1,
+            .total_bytes = ctx->skb->len,
+            .rate_bps = 0,
+            .peak_rate_bps = 0,
+            .smooth_rate_bps = 0
+        };
+        bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY); 
+    }
+    info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
+    if (info) {
+        update_flow_rate(info, now, ctx->skb->len);
+        mes.current_rate_bps = info->rate_bps;
+        mes.peak_rate_bps = info->peak_rate_bps;
+        mes.smoothed_rate_bps = info->smooth_rate_bps;
     }
 
     send_message(&mes);

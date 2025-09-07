@@ -90,7 +90,7 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
 
     auto* e = static_cast<const message_get*>(data);
     std::cout
-        << "=== Traffic Event ===\n" 
+        << "=== eth_traffic===\n" 
         << " current_rate_bps : " << e->current_rate_bps << " bps\n"
         << " peak_rate_bps    : " << e->peak_rate_bps    << " bps\n"
         << " smoothed_rate_bps: " << e->smoothed_rate_bps << " bps\n"
