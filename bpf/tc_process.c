@@ -40,10 +40,11 @@ struct process_rule {
 };
 
 struct message_get {
-    struct ProcInfo proc;
-    __u64 current_rate_bps;
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
     __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;   
+    __u64 smoothed_rate_bps;
+    struct ProcInfo proc;
 	__u64 timestamp;
 };
 
@@ -153,7 +154,7 @@ static __inline void send_message(struct message_get *mes)
 		return;
 	}
     *e = *mes;
-	e->timestamp = now_ns();
+	e->timestamp = start_to_now_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
@@ -355,15 +356,16 @@ int netfilter_hook(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT;
     }
 
-
     __u64 now = bpf_ktime_get_ns();
     __u32 flow_key = 1;
     struct flow_rate_info *info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
     if (!info) {
         struct flow_rate_info new_flow = {
             .window_start_ns = now,
-            .total_packets = 1,
             .total_bytes = ctx->skb->len,
+            .packet_bytes = ctx->skb->len,
+            .last_ns = now,
+            .instance_rate_bps = 0,
             .rate_bps = 0,
             .peak_rate_bps = 0,
             .smooth_rate_bps = 0
@@ -372,8 +374,9 @@ int netfilter_hook(struct bpf_nf_ctx *ctx)
     }
     info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
     if (info) {
-        update_flow_rate(info, now, ctx->skb->len);
-        mes.current_rate_bps = info->rate_bps;
+        update_flow_rate(info, ctx->skb->len);
+        mes.rate_bps = info->rate_bps;
+        mes.instance_rate_bps = info->instance_rate_bps;
         mes.peak_rate_bps = info->peak_rate_bps;
         mes.smoothed_rate_bps = info->smooth_rate_bps;
     }

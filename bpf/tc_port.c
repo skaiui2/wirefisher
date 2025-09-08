@@ -30,11 +30,11 @@ struct packet_tuple {
 };
 
 struct message_get {
-    struct packet_tuple tuple;
-    __u64 timestamp;
-    __u64 current_rate_bps;
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
     __u64 peak_rate_bps;
     __u64 smoothed_rate_bps;
+    struct packet_tuple tuple;
 };
 
 struct {
@@ -121,6 +121,7 @@ static __inline void send_message(struct message_get *mes)
 	if (!e) {
 		return;
 	}
+    *e = *mes;
 
 	struct packet_tuple *tuple = &(e->tuple);
     tuple->src_ip = mes->tuple.src_ip;
@@ -128,10 +129,6 @@ static __inline void send_message(struct message_get *mes)
     tuple->src_port = mes->tuple.src_port;        
     tuple->dst_port = mes->tuple.dst_port;
     tuple->protocol = mes->tuple.protocol;
-    e->current_rate_bps = mes->current_rate_bps;
-    e->peak_rate_bps = mes->peak_rate_bps;
-    e->smoothed_rate_bps = mes->smoothed_rate_bps;
-	e->timestamp = now_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
@@ -238,8 +235,10 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     if (!info) {
         struct flow_rate_info new_flow = {
             .window_start_ns = now,
-            .total_packets = 1,
             .total_bytes = ctx->skb->len,
+            .packet_bytes = ctx->skb->len,
+            .last_ns = now,
+            .instance_rate_bps = 0,
             .rate_bps = 0,
             .peak_rate_bps = 0,
             .smooth_rate_bps = 0
@@ -248,8 +247,9 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     }
     info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
     if (info) {
-        update_flow_rate(info, now, ctx->skb->len);
-        mes.current_rate_bps = info->rate_bps;
+        update_flow_rate(info, ctx->skb->len);
+        mes.rate_bps = info->rate_bps;
+        mes.instance_rate_bps = info->rate_bps;
         mes.peak_rate_bps = info->peak_rate_bps;
         mes.smoothed_rate_bps = info->smooth_rate_bps;
     }

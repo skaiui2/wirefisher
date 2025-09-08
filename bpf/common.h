@@ -32,15 +32,17 @@ struct rate_limit {
 
 
 struct flow_rate_info {
-    __u64 window_start_ns;   
-    __u64 total_packets;     
-    __u64 total_bytes;    
-    __u64 rate_bps;       
+    __u64 window_start_ns;
+    __u64 last_ns;   
+    __u64 total_bytes;
+    __u64 packet_bytes;     
+    __u64 rate_bps;      
+    __u64 instance_rate_bps;
     __u64 peak_rate_bps;    
     __u64 smooth_rate_bps;       
 };
 
-static __inline __u64 now_ns(void) 
+static __inline __u64 start_to_now_ns(void) 
 {
     return bpf_ktime_get_ns();
 }
@@ -84,17 +86,26 @@ static __always_inline int rate_limit_check(struct rate_limit *rate)
 }
 
 
-static __inline void update_flow_rate(struct flow_rate_info *flow_info, __u64 now, __u32 packet_size) 
+static __inline void update_flow_rate(struct flow_rate_info *flow_info, __u32 packet_size) 
 {
+    __u64 now = start_to_now_ns();
+    flow_info->total_bytes += packet_size;
     flow_info->rate_bps = (flow_info->total_bytes * NSEC_PER_SEC) / (now - flow_info->window_start_ns);
-    if (flow_info->rate_bps > flow_info->peak_rate_bps) {
-        flow_info->peak_rate_bps = flow_info->rate_bps;
-    }
+    if (now - flow_info->last_ns >= NSEC_PER_SEC) {
+        flow_info->instance_rate_bps = (flow_info->packet_bytes * NSEC_PER_SEC) / (now - flow_info->last_ns);
+        if (flow_info->instance_rate_bps > flow_info->peak_rate_bps) {
+            flow_info->peak_rate_bps = flow_info->instance_rate_bps;
+        }
 
-    if (flow_info->smooth_rate_bps != 0) {
-        flow_info->smooth_rate_bps = (flow_info->smooth_rate_bps - (flow_info->smooth_rate_bps >> 3)) + (flow_info->rate_bps  >> 3);
+        if (flow_info->smooth_rate_bps != 0) {
+            flow_info->smooth_rate_bps = (flow_info->smooth_rate_bps - (flow_info->smooth_rate_bps >> 3)) + (flow_info->instance_rate_bps  >> 3);
+        } else {
+            flow_info->smooth_rate_bps = flow_info->instance_rate_bps;
+        }
+        flow_info->last_ns = now;
+        flow_info->packet_bytes = packet_size;
     } else {
-        flow_info->smooth_rate_bps = flow_info->rate_bps;
+        flow_info->packet_bytes += packet_size;
     }
 }
 

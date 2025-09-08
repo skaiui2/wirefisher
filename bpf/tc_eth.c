@@ -12,10 +12,11 @@ struct eth_rule {
 };
 
 struct message_get {
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
+    __u64 peak_rate_bps;
+    __u64 smoothed_rate_bps;
     __u64    timestamp;
-    __u64    current_rate_bps;
-    __u64    peak_rate_bps;
-    __u64    smoothed_rate_bps;
 };
 
 
@@ -54,7 +55,7 @@ static __inline void send_message(struct message_get *mes)
 		return;
 	}
     *e = *mes;
-	e->timestamp = now_ns();
+	e->timestamp = start_to_now_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
@@ -119,8 +120,10 @@ static int tc_handle(struct __sk_buff *ctx, int gress)
     if (!info) {
         struct flow_rate_info new_flow = {
             .window_start_ns = now,
-            .total_packets = 1,
             .total_bytes = ctx->len,
+            .packet_bytes = ctx->len,
+            .last_ns = now,
+            .instance_rate_bps = 0,
             .rate_bps = 0,
             .peak_rate_bps = 0,
             .smooth_rate_bps = 0
@@ -129,8 +132,9 @@ static int tc_handle(struct __sk_buff *ctx, int gress)
     }
     info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
     if (info) {
-        update_flow_rate(info, now, ctx->len);
-        mes.current_rate_bps = info->rate_bps;
+        update_flow_rate(info, ctx->len);
+        mes.rate_bps = info->rate_bps;
+        mes.instance_rate_bps = info->rate_bps;
         mes.peak_rate_bps = info->peak_rate_bps;
         mes.smoothed_rate_bps = info->smooth_rate_bps;
     }

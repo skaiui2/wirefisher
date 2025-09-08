@@ -34,10 +34,11 @@ struct ProcInfo
 };
 
 struct message_get {
-    struct ProcInfo proc;
-    __u64 current_rate_bps;
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
     __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;   
+    __u64 smoothed_rate_bps;
+    struct ProcInfo proc;
 	__u64 timestamp;
 };
 
@@ -148,13 +149,14 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
         return 0;
 
     auto* e = static_cast<const message_get*>(data);
-    std::cout
-        << "=== process_traffic ===\n" 
-        << " current_rate_bps : " << e->current_rate_bps << " bps\n"
-        << " peak_rate_bps    : " << e->peak_rate_bps    << " bps\n"
-        << " smoothed_rate_bps: " << e->smoothed_rate_bps << " bps\n"
-        << " timestamp : " << format_elapsed_ns(e->timestamp)        << "\n"
-        << "=====================\n";
+    std::cout << std::fixed << std::setprecision(2) 
+    << "=== process_traffic ===\n" 
+    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " rate_bps         : " << e->rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " peak_rate_bps    : " << e->peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
+    << "=====================\n";
 
     return 0;
 }

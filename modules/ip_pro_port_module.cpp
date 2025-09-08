@@ -42,11 +42,12 @@ struct packet_tuple {
 };
 
 struct message_get {
-    struct packet_tuple tuple;
-    __u64 timestamp;
-    __u64 current_rate_bps;
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
     __u64 peak_rate_bps;
     __u64 smoothed_rate_bps;
+    struct packet_tuple tuple;
+    __u64 timestamp;
 };
 
 
@@ -120,12 +121,17 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
         << " dst_ip     : " << ip_to_string(e->tuple.dst_ip)         << "\n"
         << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
         << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
-        << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
-        << " current_rate_bps : " << e->current_rate_bps << " bps\n"
-        << " peak_rate_bps    : " << e->peak_rate_bps    << " bps\n"
-        << " smoothed_rate_bps: " << e->smoothed_rate_bps << " bps\n"
-        << " timestamp : " << format_elapsed_ns(e->timestamp)        << "\n"
-        << "=====================\n";
+        << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n";
+
+    std::cout << std::fixed << std::setprecision(2) 
+    << "=== process_traffic ===\n" 
+    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " rate_bps         : " << e->rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " peak_rate_bps    : " << e->peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
+    << "=====================\n";
+
 
     return 0;
 }
