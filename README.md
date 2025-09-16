@@ -1,6 +1,10 @@
 # wirefisher
 **wirefisher** is an eBPF-powered traffic control tool that enables precise rate limiting based on process ID, IP address, port, network interface, and cgroup. It is designed for lightweight, programmable traffic shaping in Linux environments.
 
+## Notice
+
+I'm developing FlyFish, the distributed frontend for Wirefisher—if you have any suggestions or feature requests for Wirefisher, feel free to open an issue.
+
 ## Features
 
 - Per-process bandwidth control
