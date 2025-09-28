@@ -45,7 +45,7 @@ $: mkdir build
 $: cd build
 /build$: cmake ..
 /build$: make
-/build: sudo ./ebpf_system
+/build: sudo ./wirefisher
 ```
 
 Now it will run!

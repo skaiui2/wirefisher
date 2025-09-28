@@ -106,7 +106,7 @@ make
 启动 wirefisher：
 
 ```bash
-sudo ./ebpf_system
+sudo ./wirefisher
 ```
 
 程序将根据 `config.yaml` 中的默认配置自动加载限速规则并开始运行，我们使用ctrl c即可中断wirefisher运行。
@@ -134,7 +134,7 @@ process_module:
 不需要再次编译，可以直接运行：
 
 ```
-sudo ./ebpf_system
+sudo ./wirefisher
 ```
 
 现在wirefisher会根据更改的配置文件运行限速规则。
