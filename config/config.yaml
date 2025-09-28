@@ -28,5 +28,5 @@ ip_pro_port_module:
     time_scale:         1s
     gress:              ingress
     ip_enable:          enable
-    port_enable:        enable
-    protocol_enable:    enable
+    port_enable:        disable
+    protocol_enable:    disable

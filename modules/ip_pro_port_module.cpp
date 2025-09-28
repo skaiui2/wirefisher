@@ -114,8 +114,10 @@ static int get_rule(const YAML::Node& module_node)
 
 
 static int handle_event(void* ctx, void* data, size_t data_sz) {
-    if (data_sz != sizeof(message_get)) 
+    if (data_sz != sizeof(message_get)) {
+        std::cerr << "数据大小不匹配: " << data_sz << " (期望 " << sizeof(message_get) << ")\n";
         return 0;
+    }
 
     auto* e = static_cast<const message_get*>(data);
 

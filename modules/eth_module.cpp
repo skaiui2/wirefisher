@@ -13,7 +13,10 @@
 #include <getopt.h>
 #include <arpa/inet.h>
 #include <bpf/libbpf.h>
+#include <nlohmann/json.hpp>
+#include "kafka_producer.h"
 
+extern KafkaProducer *g_producer;
 
 struct eth_rule {
     __u64    rate_bps;      
@@ -86,8 +89,10 @@ static int get_rule(const YAML::Node& module_node)
 
 
 static int handle_event(void* ctx, void* data, size_t data_sz) {
-    if (data_sz != sizeof(message_get))
+    if (data_sz != sizeof(message_get)) {
+        std::cerr << "数据大小不匹配: " << data_sz << " (期望 " << sizeof(message_get) << ")\n";
         return 0;
+    }
 
     auto* e = static_cast<const message_get*>(data);
     
@@ -99,6 +104,18 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
     << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
     << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
     << "=====================\n";
+
+    nlohmann::json j = {
+        {"instant_rate_bps", e->instance_rate_bps / (1024.0 * 1024.0)},
+        {"rate_bps", e->rate_bps / (1024.0 * 1024.0)},
+        {"peak_rate_bps", e->peak_rate_bps / (1024.0 * 1024.0)},
+        {"smoothed_rate_bps", e->smoothed_rate_bps / (1024.0 * 1024.0)},
+        {"timestamp", format_elapsed_ns(e->timestamp)}
+    };
+
+    if (g_producer) {
+        g_producer->send("", j.dump());
+    }
 
     return 0;
 }

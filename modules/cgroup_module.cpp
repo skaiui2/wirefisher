@@ -10,6 +10,10 @@
 #include <fcntl.h>
 #include <iostream>
 #include <yaml-cpp/yaml.h>
+#include <nlohmann/json.hpp>
+#include "kafka_producer.h"
+
+extern KafkaProducer *g_producer;
 
 struct message_get {   
     __u64 instance_rate_bps; 
@@ -70,7 +74,7 @@ static int get_rule(const YAML::Node& module_node)
 	uint32_t key = 0;
 	int err = bpf_map__update_elem(map,&key, sizeof(key), &rule, sizeof(rule), BPF_ANY);
 	if (err) {
-        std::cout << "NO3" << "\n";
+        std::cout << "can't update rule!" << "\n";
         return false;
 	}
     return true;
@@ -78,8 +82,10 @@ static int get_rule(const YAML::Node& module_node)
 
 
 static int handle_event(void* ctx, void* data, size_t data_sz) {
-    if (data_sz != sizeof(message_get))
+    if (data_sz != sizeof(message_get)) {
+        std::cerr << "数据大小不匹配: " << data_sz << " (期望 " << sizeof(message_get) << ")\n";
         return 0;
+    }
 
     auto* e = static_cast<const message_get*>(data);
     std::cout << std::fixed << std::setprecision(2) 
@@ -91,6 +97,17 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
     << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
     << "=====================\n";
 
+    nlohmann::json j = {
+        {"instant_rate_bps", e->instance_rate_bps / (1024.0 * 1024.0)},
+        {"rate_bps", e->rate_bps / (1024.0 * 1024.0)},
+        {"peak_rate_bps", e->peak_rate_bps / (1024.0 * 1024.0)},
+        {"smoothed_rate_bps", e->smoothed_rate_bps / (1024.0 * 1024.0)},
+        {"timestamp", format_elapsed_ns(e->timestamp)}
+    };
+
+    if (g_producer) {
+        g_producer->send("", j.dump());
+    }
 
     return 0;
 }
