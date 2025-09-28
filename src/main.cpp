@@ -4,18 +4,26 @@
 #include <unistd.h>
 #include <bpf/libbpf.h>
 #include <yaml-cpp/yaml.h>
+#include "kafka_producer.h"
 
+KafkaProducer *g_producer = nullptr;
 static bool running = true;
 
 static void on_signal(int) {
     running = false;
 }
 
-extern void out();
 int main()
 {
     if (getuid() != 0) {
         std::cerr << "error: no root!\n";
+        return 1;
+    }
+
+    try {
+        g_producer = new KafkaProducer("localhost:9092", "wirefisher.flow");
+    } catch (const std::exception& ex) {
+        std::cerr << "Kafka init failed: " << ex.what() << std::endl;
         return 1;
     }
 
@@ -24,9 +32,8 @@ int main()
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
 
-    // 4. 遍历注册链，按配置节判断是否加载模块
     for (auto mod : get_registry()) {
-        const auto& node = config[mod->yaml_key];  // 每个模块声明自己的 yaml_key
+        const auto& node = config[mod->yaml_key];  
         if (!node || node.IsNull()) {
             std::cout << "跳过模块：" << mod->name << "（未配置）\n";
             continue;
@@ -62,5 +69,6 @@ int main()
         (*it)->unload();
     }
 
+    delete g_producer;
     return 0;
 }

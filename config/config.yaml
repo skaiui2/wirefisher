@@ -12,21 +12,21 @@
 #     gress: ingress
 #     time_scale: 1s
 
-process_module:
-  process_rule:
-    target_pid: 4580
-    rate_bps: 1M
-    gress: ingress
-    time_scale: 1s
+#process_module:
+#  process_rule:
+#    target_pid: 12284
+#    rate_bps: 1M
+#    gress: ingress
+#    time_scale: 1s
 
-# ip_pro_port_module:
-#   ip_pro_port_rule:
-#     target_ip:          192.168.0.1
-#     target_port:        8080
-#     target_protocol:    UDP
-#     rate_bps:           5M
-#     time_scale:         2s
-#     gress:              ingress
-#     ip_enable:          disable
-#     port_enable:        disable
-#     protocol_enable:    disable
+ip_pro_port_module:
+  ip_pro_port_rule:
+    target_ip:          192.168.91.129
+    target_port:        9090
+    target_protocol:    TCP
+    rate_bps:           5M
+    time_scale:         1s
+    gress:              ingress
+    ip_enable:          enable
+    port_enable:        enable
+    protocol_enable:    enable

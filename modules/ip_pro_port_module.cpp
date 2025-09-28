@@ -19,7 +19,10 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <errno.h>
+#include <nlohmann/json.hpp>
+#include "kafka_producer.h"
 
+extern KafkaProducer *g_producer;
 
 struct ip_pro_port_rule {
     __u32    target_ip;    
@@ -111,27 +114,42 @@ static int get_rule(const YAML::Node& module_node)
 
 
 static int handle_event(void* ctx, void* data, size_t data_sz) {
-    if (data_sz != sizeof(message_get))
+    if (data_sz != sizeof(message_get)) 
         return 0;
 
     auto* e = static_cast<const message_get*>(data);
-    std::cout
-        << "=== ip_port_protocol_traffic ===\n"
-        << " src_ip     : " << ip_to_string(e->tuple.src_ip)         << "\n"
-        << " dst_ip     : " << ip_to_string(e->tuple.dst_ip)         << "\n"
-        << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
-        << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
-        << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n";
 
     std::cout << std::fixed << std::setprecision(2) 
-    << "=== process_traffic ===\n" 
-    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << "=== ip pro port traffic ===\n" 
+    << " src_ip     : " << ip_to_string(e->tuple.src_ip)         << "\n"
+    << " dst_ip     : " << ip_to_string(e->tuple.dst_ip)         << "\n"
+    << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
+    << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
+    << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
+    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n" 
     << " rate_bps         : " << e->rate_bps / 1024.0 / 1024.0 << " MB/s\n"
     << " peak_rate_bps    : " << e->peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
     << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
     << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
     << "=====================\n";
 
+    
+    nlohmann::json j = {
+        {"src_ip", ip_to_string(e->tuple.src_ip)},
+        {"dst_ip", ip_to_string(e->tuple.dst_ip)},
+        {"src_port", ntohs(e->tuple.src_port)},
+        {"dst_port", ntohs(e->tuple.dst_port)},
+        {"protocol", protocol_to_string(e->tuple.protocol)},
+        {"instant_rate_bps", e->instance_rate_bps / (1024.0 * 1024.0)},
+        {"rate_bps", e->rate_bps / (1024.0 * 1024.0)},
+        {"peak_rate_bps", e->peak_rate_bps / (1024.0 * 1024.0)},
+        {"smoothed_rate_bps", e->smoothed_rate_bps / (1024.0 * 1024.0)},
+        {"timestamp", format_elapsed_ns(e->timestamp)}
+    };
+
+    if (g_producer) {
+        g_producer->send("", j.dump());
+    }
 
     return 0;
 }
@@ -173,7 +191,7 @@ static int load_netfilter_module(const YAML::Node& module_node)
         attr.link_create.attach_type         = BPF_NETFILTER;
         attr.link_create.netfilter.pf        = NFPROTO_IPV4;
         attr.link_create.netfilter.hooknum   = NF_INET_LOCAL_IN;
-        attr.link_create.netfilter.priority  = -127;
+        attr.link_create.netfilter.priority  = -128;
         nf_fd_ingress = syscall(__NR_bpf, BPF_LINK_CREATE, &attr, sizeof(attr));
         if (nf_fd_ingress < 0) {
             std::cerr << "[netfilter] attach ingress 失败: " << strerror(errno) << "\n";
@@ -187,7 +205,7 @@ static int load_netfilter_module(const YAML::Node& module_node)
         }
     }
 
-    std::cout << "[netfilter] 成功附加 kprobe 和 netfilter 钩子\n";
+    std::cout << "[netfilter] 成功附加 netfilter 钩子\n";
 
     {
         auto map = bpf_object__find_map_by_name(obj, "ringbuf");
@@ -213,7 +231,6 @@ error:
     return -1;
 }
 
-// 卸载函数：反向清理所有资源
 static void unload_netfilter_module()
 {
     if (rb)                ring_buffer__free(rb);
@@ -226,7 +243,6 @@ static void unload_netfilter_module()
     std::cout << "[netfilter] 模块已卸载\n";
 }
 
-// 构造模块描述并自动注册到全局链
 static const EbpfModule netfilter_module = {
     "tc_port",   
     "ip_pro_port_module",          // YAML 配置节关键字

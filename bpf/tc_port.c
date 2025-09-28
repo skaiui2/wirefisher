@@ -1,4 +1,5 @@
 #include "common.h"
+#include <bpf/bpf_core_read.h>
 
 char __license[] SEC("license") = "GPL";
 
@@ -35,6 +36,7 @@ struct message_get {
     __u64 peak_rate_bps;
     __u64 smoothed_rate_bps;
     struct packet_tuple tuple;
+    __u64 timestamp;
 };
 
 struct {
@@ -129,12 +131,12 @@ static __inline void send_message(struct message_get *mes)
     tuple->src_port = mes->tuple.src_port;        
     tuple->dst_port = mes->tuple.dst_port;
     tuple->protocol = mes->tuple.protocol;
+    e->timestamp = bpf_ktime_get_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
 
-static __inline bool parse_sk_buff(struct sk_buff *skb, __u8 direction,
-                                          struct packet_tuple *tuple)
+static __inline bool parse_sk_buff(struct sk_buff *skb, struct packet_tuple *tuple)
 {
     if (!skb || !tuple) {
         return false;
@@ -205,15 +207,23 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT;
     }
 
-    __u8 direction = INGRESS;
-
-    if (!parse_sk_buff(ctx->skb, direction, tuple)) {
-        return NF_ACCEPT; 
-    }
+    __u32 hook_state = BPF_CORE_READ(ctx->state, hook);
 
     rule = bpf_map_lookup_elem(&ip_pro_port_rules, &rule_key);
     if (!rule) {
         return NF_ACCEPT;
+    }
+
+    if (rule->gress == EGRESS && hook_state != NF_INET_LOCAL_OUT) {
+        return NF_ACCEPT;
+    }
+
+    if (rule->gress == INGRESS && hook_state != NF_INET_LOCAL_IN) {
+        return NF_ACCEPT;
+    }
+
+    if (!parse_sk_buff(ctx->skb, tuple)) {
+        return NF_ACCEPT; 
     }
 
     if (rule->ip_enable == true && rule->target_ip != tuple->dst_ip) {
@@ -227,7 +237,6 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     if (rule->protocol_enable == true && rule->target_protocol != tuple->protocol) {
         return NF_ACCEPT;
     }
-
     
     __u64 now = bpf_ktime_get_ns();
     __u32 flow_key = 1;
@@ -255,7 +264,7 @@ static int netfilter_handle(struct bpf_nf_ctx *ctx)
     }
 
     send_message(&mes);
-    
+
     __u64 bucket_key;
     if (rule->ip_enable == false && rule->port_enable == false && rule->protocol_enable == false) {
         bucket_key = 0;

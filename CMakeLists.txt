@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ebpf_system)
+project(wirefisher)
 
 # 使用 C++17
 set(CMAKE_CXX_STANDARD 17)
@@ -23,8 +23,9 @@ include_directories(
 )
 
 # 添加可执行文件，按目录组织源文件
-add_executable(ebpf_system
+add_executable(wirefisher
   src/main.cpp
+  src/kafka_producer.cpp
   modules/process_module.cpp
   modules/ip_pro_port_module.cpp
   modules/eth_module.cpp
@@ -32,11 +33,16 @@ add_executable(ebpf_system
 )
 
 # 链接所需库
-target_link_libraries(ebpf_system
+target_link_libraries(wirefisher
   PRIVATE
     yaml-cpp
     ${LIBBPF_LIB}
     ${ELF_LIB}
     ${ZLIB_LIB}
 )
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(RDKAFKA REQUIRED rdkafka)
+target_link_libraries(wirefisher PRIVATE ${RDKAFKA_LIBRARIES})
+target_include_directories(wirefisher PRIVATE ${RDKAFKA_INCLUDE_DIRS})
 
