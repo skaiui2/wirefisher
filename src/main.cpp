@@ -20,14 +20,16 @@ int main()
         return 1;
     }
 
+    YAML::Node config = YAML::LoadFile("../config/config.yaml");
     try {
-        g_producer = new KafkaProducer("localhost:9092", "wirefisher.flow");
+        auto kafka_cfg = config["kafka"];
+        g_producer = new KafkaProducer(
+            kafka_cfg["brokers"].as<std::string>(),
+            kafka_cfg["topic"].as<std::string>());
     } catch (const std::exception& ex) {
         std::cerr << "Kafka init failed: " << ex.what() << std::endl;
         return 1;
     }
-
-    YAML::Node config = YAML::LoadFile("../config/config.yaml");
 
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);

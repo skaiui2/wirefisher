@@ -1,3 +1,7 @@
+kafka:
+  brokers: "localhost:9092"
+  topic: "wirefisher.flow"
+
 # cgroup_module:
 #   cgroup_rule:
 #     target_cgroup: "/sys/fs/cgroup"
