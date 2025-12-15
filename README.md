@@ -14,6 +14,16 @@ I'm developing FlyFish, the distributed frontend for Wirefisher—if you have an
 - Ingress and egress direction support
 - Real-time rate metrics: average, peak, and smoothed
 
+## Environment Setup
+
+Two ways:
+
+- [Command-line ](docs/中文/eBPF环境搭建.md)
+
+or:
+
+- [Docker ](docs/中文/docker.md)
+
 ## Configuration Example
 
 Enter the documents:
