@@ -1,5 +1,5 @@
 kafka:
-  brokers: "localhost:9092"
+  brokers: "172.26.210.113:9092"
   topic: "wirefisher.flow"
 
 # cgroup_module:
@@ -25,12 +25,18 @@ kafka:
 
 ip_pro_port_module:
   ip_pro_port_rule:
-    target_ip:          192.168.91.129
-    target_port:        9090
-    target_protocol:    TCP
-    rate_bps:           5M
-    time_scale:         1s
-    gress:              ingress
-    ip_enable:          enable
-    port_enable:        disable
-    protocol_enable:    disable
+    only_watch: enable
+    src_ip:   0 
+    src_port: 9090
+    dst_ip: fe80::20c:29ff:fea8:3f54    
+    dst_port: 0                
+    protocol: TCP                        
+    rate_bps:   1M 
+    time_scale: 1s                          
+    gress: ingress                          
+    src_ip_enable:     disable
+    src_port_enable:   disable
+    dst_ip_enable:     enable
+    dst_port_enable:   disable
+    protocol_enable:   enable
+

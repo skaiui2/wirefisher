@@ -4,15 +4,33 @@
 #include <regex>
 #include <stdexcept>
 #include <cstdint>
-
+#include <cstring>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <arpa/inet.h>   
+#include <netinet/in.h> 
+#include <sys/socket.h>   
 
-#include <arpa/inet.h>    // inet_pton, inet_ntop, htonl, ntohl
-#include <netinet/in.h>   // IPPROTO_TCP, IPPROTO_UDP
-#include <sys/socket.h>   // AF_INET
+
+struct ip_addr {
+    __u8 version;  
+
+    union {
+        __u32 v4;    
+        __u8  v6[16];   
+    };
+};
+
+struct packet_tuple {
+    struct ip_addr src;
+    struct ip_addr dst;
+
+    __u16 src_port;
+    __u16 dst_port;
+    __u8  protocol;
+};
 
 inline uint64_t parse_rate_bps(const std::string& rate_str) {
     std::regex pattern(R"((\d+)([KMG]?))");
@@ -47,22 +65,56 @@ inline uint8_t parse_gress(const std::string& gress_str) {
     if (gress_str == "egress")  return 1;
     throw std::runtime_error("Invalid gress value: " + gress_str);
 }
+inline std::string ip_to_string(const ip_addr& ip) {
+    char buf[INET6_ADDRSTRLEN] = {};
 
-inline std::string ip_to_string(uint32_t ip_hbo) {
-    in_addr addr;
-    addr.s_addr = htonl(ip_hbo);
-    char buf[INET_ADDRSTRLEN] = {};
-    inet_ntop(AF_INET, &addr, buf, sizeof(buf));
-    return buf;
+    if (ip.version == 4) {
+        in_addr addr{};
+        addr.s_addr = htonl(ip.v4);
+
+        if (!inet_ntop(AF_INET, &addr, buf, sizeof(buf)))
+            return "<invalid-ipv4>";
+
+        return buf;
+    }
+
+    if (ip.version == 6) {
+        in6_addr addr6{};
+        memcpy(addr6.s6_addr, ip.v6, 16);
+
+        if (!inet_ntop(AF_INET6, &addr6, buf, sizeof(buf)))
+            return "<invalid-ipv6>";
+
+        return buf;
+    }
+
+    return "<invalid-ip>";
 }
 
-inline uint32_t parse_ip(const std::string& ip_str) {
-    in_addr addr;
-    if (inet_pton(AF_INET, ip_str.c_str(), &addr) != 1) {
-        throw std::runtime_error("Invalid IPv4 address: " + ip_str);
+inline ip_addr parse_ip(const std::string& ip_str) {
+    ip_addr out{};
+
+    if (ip_str == "0" || ip_str.empty()) {
+        out.version = 0;
+        return out;
     }
-    // inet_pton 返回网络字节序，转换为主机字节序
-    return ntohl(addr.s_addr);
+
+    in_addr addr4{};
+    if (inet_pton(AF_INET, ip_str.c_str(), &addr4) == 1) {
+        out.version = 4;
+        out.v4 = ntohl(addr4.s_addr);
+        return out;
+    }
+
+    in6_addr addr6{};
+    if (inet_pton(AF_INET6, ip_str.c_str(), &addr6) == 1) {
+        out.version = 6;
+        memcpy(out.v6, addr6.s6_addr, 16);
+        return out;
+    }
+
+    out.version = 0;
+    return out;
 }
 
 inline std::string protocol_to_string(uint8_t proto) {

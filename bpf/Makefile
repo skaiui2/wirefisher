@@ -2,7 +2,19 @@ ARCH        := x86_64
 KHEAD       := $(CURDIR)/kernel-headers/include
 
 CC          := clang
-BPF_CFLAGS  := -O2 -g -target bpf -Wno-unknown-attributes
+
+ifeq ($(ARCH),x86_64) 
+	BPF_ARCH := __TARGET_ARCH_x86 
+else ifeq ($(ARCH),arm64) 
+	BPF_ARCH := __TARGET_ARCH_arm64 
+else ifeq ($(ARCH),riscv) 
+	BPF_ARCH := __TARGET_ARCH_riscv 
+else 
+	$(error Unsupported ARCH: $(ARCH)) 
+endif
+
+BPF_CFLAGS := -O2 -g -target bpf -Wno-unknown-attributes -D$(BPF_ARCH)
+
 PKG_CFLAGS  := $(shell pkg-config --cflags libbpf)
 
 INCLUDES    := \

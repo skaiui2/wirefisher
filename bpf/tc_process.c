@@ -1,5 +1,5 @@
-#define __TARGET_ARCH_x86
-#include "common.h"
+#include "rate_limit.h"
+#include "hdr_parse.h"
 #include <bpf/bpf_core_read.h>
 
 char __license[] SEC("license") = "GPL";
@@ -13,12 +13,12 @@ char __license[] SEC("license") = "GPL";
 #define NF_INET_LOCAL_OUT    3
 #define NF_INET_POST_ROUTING 4
 
-#define NF_DROP    0   /* 丢弃数据包：包被丢弃，不再进行后续协议栈或其他 hook 处理 */
-#define NF_ACCEPT  1   /* 接收数据包：允许继续正常传递，或进入下一个 hook/协议栈 */
-#define NF_STOLEN  2   /* 包已被 hook “接管”：hook 函数已自行处理该包，不再做其他处理 */
-#define NF_QUEUE   3   /* 将包排队交给 userspace：通过 netlink 送到 userspace（nfnetlink_queue） */
-#define NF_REPEAT  4   /* 重复调用本 hook：在同一样点重新遍历所有注册的 hook 函数 */
-#define NF_STOP    5   /* 停止后续 hook 调用（已弃用，仅为 userspace nf_queue 兼容） */
+#define NF_DROP    0   /* Drop the packet: no further processing */
+#define NF_ACCEPT  1   /* Accept the packet: continue normal processing */
+#define NF_STOLEN  2   /* Packet taken over by the hook: no further handling */
+#define NF_QUEUE   3   /* Queue the packet to userspace via netlink */
+#define NF_REPEAT  4   /* Re-run this hook and all its handlers */
+#define NF_STOP    5   /* Stop further hook processing (deprecated) */
 
 struct ProcInfo
 {
@@ -40,12 +40,8 @@ struct process_rule {
 };
 
 struct message_get {
-    __u64 instance_rate_bps; 
-    __u64 rate_bps;
-    __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;
+    struct flow_rate_message flow_msg;
     struct ProcInfo proc;
-	__u64 timestamp;
 };
 
 struct
@@ -99,52 +95,6 @@ struct {
     __uint(max_entries, 1);
 } local_ip_map SEC(".maps");
 
-static struct udphdr *udp_hdr(struct sk_buff *skb, u32 offset)
-{
-    struct bpf_dynptr ptr;
-    struct udphdr *p, udph = {};
-    if (skb->len <= offset) {
-        return NULL;
-    }
-
-    if (bpf_dynptr_from_skb((struct __sk_buff *)skb, 0, &ptr)) {
-        return NULL;
-    }
-
-    return bpf_dynptr_slice(&ptr, offset, &udph, sizeof(udph));
-}
-
-static struct tcphdr *tcp_hdr(struct sk_buff *skb, u32 offset)
-{
-    struct bpf_dynptr ptr;
-    struct tcphdr *p, tcph = {};
-    if (skb->len <= offset) {
-        return NULL;
-    }
-
-    if (bpf_dynptr_from_skb((struct __sk_buff *)skb, 0, &ptr)) {
-        return NULL;
-    }
-
-    return bpf_dynptr_slice(&ptr, offset, &tcph, sizeof(tcph));
-}
-
-static struct iphdr *ip_hdr(struct sk_buff *skb)
-{
-	struct bpf_dynptr ptr;
-	struct iphdr *p, iph = {};
-
-	if (skb->len <= 20) {
-		return NULL;
-    }
-
-    if (bpf_dynptr_from_skb((struct __sk_buff *)skb, 0, &ptr)) {
-        return NULL;
-    }
-
-	return bpf_dynptr_slice(&ptr, 0, &iph, sizeof(iph));
-}
-
 static __inline void send_message(struct message_get *mes)
 {
 	struct message_get *e;
@@ -154,7 +104,6 @@ static __inline void send_message(struct message_get *mes)
 		return;
 	}
     *e = *mes;
-	e->timestamp = start_to_now_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
@@ -356,30 +305,7 @@ int netfilter_hook(struct bpf_nf_ctx *ctx)
         return NF_ACCEPT;
     }
 
-    __u64 now = bpf_ktime_get_ns();
-    __u32 flow_key = 1;
-    struct flow_rate_info *info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
-    if (!info) {
-        struct flow_rate_info new_flow = {
-            .window_start_ns = now,
-            .total_bytes = ctx->skb->len,
-            .packet_bytes = ctx->skb->len,
-            .last_ns = now,
-            .instance_rate_bps = 0,
-            .rate_bps = 0,
-            .peak_rate_bps = 0,
-            .smooth_rate_bps = 0
-        };
-        bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY); 
-    }
-    info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
-    if (info) {
-        update_flow_rate(info, ctx->skb->len);
-        mes.rate_bps = info->rate_bps;
-        mes.instance_rate_bps = info->instance_rate_bps;
-        mes.peak_rate_bps = info->peak_rate_bps;
-        mes.smoothed_rate_bps = info->smooth_rate_bps;
-    }
+    update_flow(&flow_rate_stats, &mes.flow_msg, ctx->skb->len);
 
     send_message(&mes);
     

@@ -1,4 +1,4 @@
-#include "common.h"
+#include "rate_limit.h"
 
 char __license[] SEC("license") = "GPL";
 
@@ -6,11 +6,7 @@ char __license[] SEC("license") = "GPL";
 #define CG_ACT_SHOT 0
 
 struct message_get {  
-    __u64 instance_rate_bps; 
-    __u64 rate_bps;
-    __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;
-	__u64 timestamp;
+    struct flow_rate_message flow_msg;
 };
 
 struct cgroup_rule {
@@ -55,7 +51,6 @@ static __inline void send_message(struct message_get *mes)
 		return;
 	}
     *e = *mes;
-	e->timestamp = start_to_now_ns();
 
 	bpf_ringbuf_submit(e, 0);
 }
@@ -87,31 +82,7 @@ static int cgroup_handle(struct __sk_buff *ctx, int gress)
         return CG_ACT_OK;
     }
 
-
-    __u64 now = bpf_ktime_get_ns();
-    __u32 flow_key = 1;
-    struct flow_rate_info *info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
-    if (!info) {
-        struct flow_rate_info new_flow = {
-            .window_start_ns = now,
-            .total_bytes = ctx->len,
-            .packet_bytes = ctx->len,
-            .last_ns = now,
-            .instance_rate_bps = 0,
-            .rate_bps = 0,
-            .peak_rate_bps = 0,
-            .smooth_rate_bps = 0
-        };
-        bpf_map_update_elem(&flow_rate_stats, &flow_key, &new_flow, BPF_ANY); 
-    }
-    info = bpf_map_lookup_elem(&flow_rate_stats, &flow_key);
-    if (info) {
-        update_flow_rate(info, ctx->len);
-        mes.rate_bps = info->rate_bps;
-        mes.instance_rate_bps = info->rate_bps;
-        mes.peak_rate_bps = info->peak_rate_bps;
-        mes.smoothed_rate_bps = info->smooth_rate_bps;
-    }
+    update_flow(&flow_rate_stats, &mes.flow_msg, ctx->len);
 
     send_message(&mes);
 

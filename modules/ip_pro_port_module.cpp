@@ -25,23 +25,16 @@
 extern KafkaProducer *g_producer;
 
 struct ip_pro_port_rule {
-    __u32    target_ip;    
-    __u16    target_port;  
-    __u8     target_protocol; 
+    struct packet_tuple network_tuple;
     __u64    rate_bps;      
-    __u32    time_scale;    
+    __u32    time_scale;  
+    __u8     only_watch : 1;  
     __u8     gress : 1;    
-    __u8     ip_enable : 1;
-    __u8     port_enable : 1;
-    __u8     protocol_enable : 5;   
-};
-
-struct packet_tuple {
-    __u32 src_ip;
-    __u32 dst_ip;
-    __u16 src_port;
-    __u16 dst_port;
-    __u8  protocol;
+    __u8     src_ip_enable : 1;
+    __u8     dst_ip_enable : 1;
+    __u8     src_port_enable : 1;
+    __u8     dst_port_enable : 1; 
+    __u8     protocol_enable : 2;  
 };
 
 struct message_get {
@@ -69,14 +62,19 @@ static int get_rule(const YAML::Node& module_node)
     }
 
     try {
-        rule.target_ip       = parse_ip(node["target_ip"].as<std::string>());
-        rule.target_port     = node["target_port"].as<uint16_t>();
-        rule.target_protocol = parse_protocol(node["target_protocol"].as<std::string>());
+        rule.only_watch = parse_flag(node["only_watch"]);
+        rule.network_tuple.src = parse_ip(node["src_ip"].as<std::string>());
+        rule.network_tuple.src_port = node["src_port"].as<uint16_t>();
+        rule.network_tuple.dst = parse_ip(node["dst_ip"].as<std::string>());
+        rule.network_tuple.dst_port = node["dst_port"].as<uint16_t>();
+        rule.network_tuple.protocol = parse_protocol(node["protocol"].as<std::string>());
         rule.rate_bps        = parse_rate_bps(node["rate_bps"].as<std::string>());
         rule.time_scale      = parse_time_scale(node["time_scale"].as<std::string>());
         rule.gress           = parse_gress(node["gress"].as<std::string>());
-        rule.ip_enable        = parse_flag(node["ip_enable"]);
-        rule.port_enable      = parse_flag(node["port_enable"]);
+        rule.src_ip_enable   = parse_flag(node["src_ip_enable"]);
+        rule.dst_ip_enable   = parse_flag(node["dst_ip_enable"]);
+        rule.src_port_enable = parse_flag(node["src_port_enable"]);
+        rule.dst_port_enable = parse_flag(node["dst_port_enable"]);
         rule.protocol_enable  = parse_flag(node["protocol_enable"]);
     }
     catch (const std::exception& e) {
@@ -86,14 +84,18 @@ static int get_rule(const YAML::Node& module_node)
 
     std::cout 
         << "=== ip_pro_port_rule ===\n"
-        << " target_ip         : " << ip_to_string(rule.target_ip)    << "\n"
-        << " target_port       : " << rule.target_port                << "\n"
-        << " target_protocol   : " << int(rule.target_protocol)       << "\n"
+        << " network_tuple.src_ip         : " << ip_to_string(rule.network_tuple.src)    << "\n"
+        << " network_tuple.dst_ip         : " << ip_to_string(rule.network_tuple.dst)    << "\n"
+        << " network_tuple.src_port       : " << rule.network_tuple.src_port                << "\n"
+        << " network_tuple.dst_port       : " << rule.network_tuple.dst_port                << "\n"
+        << " network_tuple.protocol   : " << int(rule.network_tuple.protocol)       << "\n"
         << " rate_bps          : " << rule.rate_bps << " bps\n"
         << " time_scale        : " << rule.time_scale << " sec\n"
         << " gress             : " << (rule.gress ? "egress" : "ingress") << "\n"
-        << " ip_enable         : " << std::boolalpha << bool(rule.ip_enable)       << "\n"
-        << " port_enable       : " << std::boolalpha << bool(rule.port_enable)     << "\n"
+        << " src_ip_enable         : " << std::boolalpha << bool(rule.src_ip_enable)       << "\n"
+        << " dst_ip_enable         : " << std::boolalpha << bool(rule.dst_ip_enable)       << "\n"
+        << " src_port_enable       : " << std::boolalpha << bool(rule.src_port_enable)     << "\n"
+        << " dst_port_enable       : " << std::boolalpha << bool(rule.dst_port_enable)     << "\n"
         << " protocol_enable   : " << std::boolalpha << bool(rule.protocol_enable) << "\n"
         << "========================\n";
 
@@ -123,8 +125,8 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
 
     std::cout << std::fixed << std::setprecision(2) 
     << "=== ip pro port traffic ===\n" 
-    << " src_ip     : " << ip_to_string(e->tuple.src_ip)         << "\n"
-    << " dst_ip     : " << ip_to_string(e->tuple.dst_ip)         << "\n"
+    << " src_ip     : " << ip_to_string(e->tuple.src)         << "\n"
+    << " dst_ip     : " << ip_to_string(e->tuple.dst)         << "\n"
     << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
     << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
     << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
@@ -137,8 +139,8 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
 
     
     nlohmann::json j = {
-        {"src_ip", ip_to_string(e->tuple.src_ip)},
-        {"dst_ip", ip_to_string(e->tuple.dst_ip)},
+        {"src_ip", ip_to_string(e->tuple.src)},
+        {"dst_ip", ip_to_string(e->tuple.dst)},
         {"src_port", ntohs(e->tuple.src_port)},
         {"dst_port", ntohs(e->tuple.dst_port)},
         {"protocol", protocol_to_string(e->tuple.protocol)},
