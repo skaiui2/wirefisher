@@ -65,13 +65,6 @@ static __inline void send_message(struct message_get *mes)
 	}
     *e = *mes;
 
-	struct packet_tuple *tuple = &(e->tuple);
-    tuple->src = mes->tuple.src;
-    tuple->dst = mes->tuple.dst;
-    tuple->src_port = mes->tuple.src_port;        
-    tuple->dst_port = mes->tuple.dst_port;
-    tuple->protocol = mes->tuple.protocol;
-
 	bpf_ringbuf_submit(e, 0);
 }
 

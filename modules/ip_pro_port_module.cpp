@@ -38,14 +38,9 @@ struct ip_pro_port_rule {
 };
 
 struct message_get {
-    __u64 instance_rate_bps; 
-    __u64 rate_bps;
-    __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;
+    struct flow_rate_message flow_msg;
     struct packet_tuple tuple;
-    __u64 timestamp;
 };
-
 
 static struct bpf_object *obj               = nullptr;
 static int                 nf_fd_ingress    = -1;
@@ -127,14 +122,14 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
     << "=== ip pro port traffic ===\n" 
     << " src_ip     : " << ip_to_string(e->tuple.src)         << "\n"
     << " dst_ip     : " << ip_to_string(e->tuple.dst)         << "\n"
-    << " src_port   : " << ntohs(e->tuple.src_port)              << "\n"
-    << " dst_port   : " << ntohs(e->tuple.dst_port)              << "\n"
+    << " src_port   : " << e->tuple.src_port              << "\n"
+    << " dst_port   : " << e->tuple.dst_port              << "\n"
     << " protocol   : " << protocol_to_string(e->tuple.protocol) << "\n"
-    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n" 
-    << " rate_bps         : " << e->rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " peak_rate_bps    : " << e->peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
+    << " instant_rate_bps : " << e->flow_msg.instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n" 
+    << " rate_bps         : " << e->flow_msg.rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " peak_rate_bps    : " << e->flow_msg.peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " smoothed_rate_bps: " << e->flow_msg.smooth_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " timestamp         : " << format_elapsed_ns(e->flow_msg.timestamp) << "\n"
     << "=====================\n";
 
     
@@ -144,11 +139,11 @@ static int handle_event(void* ctx, void* data, size_t data_sz) {
         {"src_port", ntohs(e->tuple.src_port)},
         {"dst_port", ntohs(e->tuple.dst_port)},
         {"protocol", protocol_to_string(e->tuple.protocol)},
-        {"instant_rate_bps", e->instance_rate_bps / (1024.0 * 1024.0)},
-        {"rate_bps", e->rate_bps / (1024.0 * 1024.0)},
-        {"peak_rate_bps", e->peak_rate_bps / (1024.0 * 1024.0)},
-        {"smoothed_rate_bps", e->smoothed_rate_bps / (1024.0 * 1024.0)},
-        {"timestamp", format_elapsed_ns(e->timestamp)}
+        {"instant_rate_bps", e->flow_msg.instance_rate_bps / (1024.0 * 1024.0)},
+        {"rate_bps", e->flow_msg.rate_bps / (1024.0 * 1024.0)},
+        {"peak_rate_bps", e->flow_msg.peak_rate_bps / (1024.0 * 1024.0)},
+        {"smoothed_rate_bps", e->flow_msg.smooth_rate_bps / (1024.0 * 1024.0)},
+        {"timestamp", format_elapsed_ns(e->flow_msg.timestamp)}
     };
 
     if (g_producer) {

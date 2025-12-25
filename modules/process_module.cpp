@@ -38,12 +38,8 @@ struct ProcInfo
 };
 
 struct message_get {
-    __u64 instance_rate_bps; 
-    __u64 rate_bps;
-    __u64 peak_rate_bps;
-    __u64 smoothed_rate_bps;
+    struct flow_rate_message flow_msg;
     struct ProcInfo proc;
-	__u64 timestamp;
 };
 
 static struct bpf_object *obj               = nullptr;
@@ -157,19 +153,19 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     auto* e = static_cast<const message_get*>(data);
     std::cout << std::fixed << std::setprecision(2) 
     << "=== process_traffic ===\n" 
-    << " instant_rate_bps : " << e->instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " rate_bps         : " << e->rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " peak_rate_bps    : " << e->peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " smoothed_rate_bps: " << e->smoothed_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
-    << " timestamp         : " << format_elapsed_ns(e->timestamp) << "\n"
+    << " instant_rate_bps : " << e->flow_msg.instance_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " rate_bps         : " << e->flow_msg.rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " peak_rate_bps    : " << e->flow_msg.peak_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " smoothed_rate_bps: " << e->flow_msg.smooth_rate_bps / 1024.0 / 1024.0 << " MB/s\n"
+    << " timestamp         : " << format_elapsed_ns(e->flow_msg.timestamp) << "\n"
     << "=====================\n";
 
     nlohmann::json j = {
-        {"instant_rate_bps", e->instance_rate_bps / (1024.0 * 1024.0)},
-        {"rate_bps", e->rate_bps / (1024.0 * 1024.0)},
-        {"peak_rate_bps", e->peak_rate_bps / (1024.0 * 1024.0)},
-        {"smoothed_rate_bps", e->smoothed_rate_bps / (1024.0 * 1024.0)},
-        {"timestamp", format_elapsed_ns(e->timestamp)}
+        {"instant_rate_bps", e->flow_msg.instance_rate_bps / (1024.0 * 1024.0)},
+        {"rate_bps", e->flow_msg.rate_bps / (1024.0 * 1024.0)},
+        {"peak_rate_bps", e->flow_msg.peak_rate_bps / (1024.0 * 1024.0)},
+        {"smoothed_rate_bps", e->flow_msg.smooth_rate_bps / (1024.0 * 1024.0)},
+        {"timestamp", format_elapsed_ns(e->flow_msg.timestamp)}
     };
 
     if (g_producer) {

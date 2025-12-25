@@ -32,6 +32,14 @@ struct packet_tuple {
     __u8  protocol;
 };
 
+struct flow_rate_message {
+    __u64 instance_rate_bps; 
+    __u64 rate_bps;
+    __u64 peak_rate_bps;
+    __u64 smooth_rate_bps;
+    __u64    timestamp;
+};
+
 inline uint64_t parse_rate_bps(const std::string& rate_str) {
     std::regex pattern(R"((\d+)([KMG]?))");
     std::smatch match;
