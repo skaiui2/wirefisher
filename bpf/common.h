@@ -12,6 +12,11 @@
 #define IPPROTO_TCP 6
 #define IPPROTO_UDP 17
 
+#define AF_INET   2
+#define AF_INET6  10
+
+#define TCP_CONGESTION  13
+
 #define ACCEPT 1
 #define DROP   0
 

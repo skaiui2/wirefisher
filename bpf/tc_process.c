@@ -55,7 +55,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct sock *);
 	__type(value, struct ProcInfo);
-	__uint(max_entries, 20000);
+	__uint(max_entries, 1 << 16);
 } sock_map SEC(".maps");
 
 

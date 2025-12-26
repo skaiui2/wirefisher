@@ -7,7 +7,7 @@ struct ip_addr {
 
     union {
         __u32 v4;    
-        __u8  v6[16];   
+        __u32 v6[4];   
     };
 };
 

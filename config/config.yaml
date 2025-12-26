@@ -2,41 +2,12 @@ kafka:
   brokers: "172.26.210.113:9092"
   topic: "wirefisher.flow"
 
-# cgroup_module:
-#   cgroup_rule:
-#     target_cgroup: "/sys/fs/cgroup"
-#     rate_bps: 100M
-#     gress: ingress
-#     time_scale: 1s
 
-# eth_module:
-#   eth_rule:
-#     target_if: ens33
-#     rate_bps: 1M
-#     gress: ingress
-#     time_scale: 1s
 
-#process_module:
-#  process_rule:
-#    target_pid: 12284
-#    rate_bps: 1M
-#    gress: ingress
-#    time_scale: 1s
 
-ip_pro_port_module:
-  ip_pro_port_rule:
-    only_watch: enable
-    src_ip:   0 
-    src_port: 9090
-    dst_ip: fe80::20c:29ff:fea8:3f54    
-    dst_port: 0                
-    protocol: TCP                        
-    rate_bps:   1M 
-    time_scale: 1s                          
-    gress: ingress                          
-    src_ip_enable:     disable
-    src_port_enable:   disable
-    dst_ip_enable:     enable
-    dst_port_enable:   disable
-    protocol_enable:   enable
-
+tcp_switch_module:
+  tcp_switch_rule:
+    ip: 192.168.200.5
+    port: 0
+    remote: true
+    congestion: bbr

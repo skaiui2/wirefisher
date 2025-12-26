@@ -1,6 +1,8 @@
 # wirefisher
 **wirefisher** is an eBPF-powered traffic control tool that enables precise rate limiting based on process ID, IP address, port, network interface, and cgroup. It is designed for lightweight, programmable traffic shaping in Linux environments.
 
+**wirefisher** provides three major capabilities: real‑time network monitoring, fine‑grained traffic limiting, and adaptive performance tuning.
+
 ## Notice
 
 I'm developing FlyFish, the distributed frontend for Wirefisher—if you have any suggestions or feature requests for Wirefisher, feel free to open an issue.
@@ -13,6 +15,7 @@ I'm developing FlyFish, the distributed frontend for Wirefisher—if you have an
 - Cgroup-based traffic shaping
 - Ingress and egress direction support
 - Real-time rate metrics: average, peak, and smoothed
+- It monitors specific IP/port combinations and automatically switches the congestion control algorithm that you set in rule when a match is detected.
 
 ## Environment Setup
 
@@ -55,7 +58,7 @@ $: mkdir build
 $: cd build
 /build$: cmake ..
 /build$: make
-/build: sudo ./wirefisher
+/build$: sudo ./wirefisher
 ```
 
 Now it will run!

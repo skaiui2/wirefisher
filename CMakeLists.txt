@@ -30,6 +30,7 @@ add_executable(wirefisher
   modules/ip_pro_port_module.cpp
   modules/eth_module.cpp
   modules/cgroup_module.cpp
+  modules/tcp_switch_module.cpp
 )
 
 # 链接所需库
